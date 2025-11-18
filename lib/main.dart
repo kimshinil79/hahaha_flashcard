@@ -102,17 +102,6 @@ class _AuthWrapperState extends State<AuthWrapper> {
   final FirebaseAuth _auth = FirebaseAuth.instance;
 
   @override
-  void initState() {
-    super.initState();
-    // 인증 상태 변경 리스너
-    _auth.authStateChanges().listen((User? user) {
-      if (mounted) {
-        setState(() {});
-      }
-    });
-  }
-
-  @override
   Widget build(BuildContext context) {
     return StreamBuilder<User?>(
       stream: _auth.authStateChanges(),
@@ -166,45 +155,49 @@ class _MyHomePageState extends State<MyHomePage> {
     }
 
     // 카메라 화면으로 이동
-    if (mounted) {
-      final result = await Navigator.push(
+    if (!mounted) return;
+    
+    final result = await Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => CameraScreen(camera: widget.cameras.first),
+      ),
+    );
+
+    // await 후 mounted 체크
+    if (!mounted) return;
+
+    if (result != null && result is String) {
+      setState(() {
+        _image = null;
+        _recognizedText = null;
+      });
+      
+      // 사진 촬영 모드로 이동
+      final cropResult = await Navigator.push(
         context,
         MaterialPageRoute(
-          builder: (context) => CameraScreen(camera: widget.cameras.first),
+          builder: (context) => CameraViewPage(imagePath: result),
         ),
       );
 
-      if (result != null && result is String) {
+      // await 후 mounted 체크
+      if (!mounted) return;
+
+      if (cropResult is Map<String, dynamic>) {
+        final extractedText = cropResult['text'] as String?;
+        final updatedImagePath = cropResult['imagePath'] as String?;
+
         setState(() {
-          _image = null;
-          _recognizedText = null;
-        });
-        
-        // 사진 촬영 모드로 이동
-        if (mounted) {
-          final cropResult = await Navigator.push(
-            context,
-            MaterialPageRoute(
-              builder: (context) => CameraViewPage(imagePath: result),
-            ),
-          );
-
-          if (cropResult is Map<String, dynamic>) {
-            final extractedText = cropResult['text'] as String?;
-            final updatedImagePath = cropResult['imagePath'] as String?;
-
-            setState(() {
-              if (updatedImagePath != null && updatedImagePath.isNotEmpty) {
-                _image = File(updatedImagePath);
-                _imageVersion++;
-              }
-
-              if (extractedText != null && extractedText.trim().isNotEmpty) {
-                _recognizedText = extractedText.trim();
-              }
-            });
+          if (updatedImagePath != null && updatedImagePath.isNotEmpty) {
+            _image = File(updatedImagePath);
+            _imageVersion++;
           }
-        }
+
+          if (extractedText != null && extractedText.trim().isNotEmpty) {
+            _recognizedText = extractedText.trim();
+          }
+        });
       }
     }
   }
