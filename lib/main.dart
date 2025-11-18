@@ -9,6 +9,8 @@ import 'widgets/camera_screen.dart';
 import 'widgets/camera_view_page.dart';
 import 'widgets/searching_words.dart';
 import 'widgets/login_screen.dart';
+import 'widgets/recognized_text_display.dart';
+import 'widgets/word_detail_dialog.dart';
 import 'dart:convert';
 
 void main() async {
@@ -147,7 +149,6 @@ class _MyHomePageState extends State<MyHomePage> {
   bool _isDragging = false;
   static const double _fabSize = 56.0;
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
-  Map<String, dynamic>? _selectedWordData;
   Map<String, String>? _irregularWordsMap;
 
   @override
@@ -264,60 +265,11 @@ class _MyHomePageState extends State<MyHomePage> {
                       children: <Widget>[
                         const SearchingWords(),
                         const SizedBox(height: 32),
-                        // 선택된 단어 카드
-                        if (_selectedWordData != null && _selectedWordData!['meanings'] != null) ...[
-                          _buildWordCard(_selectedWordData!),
-                          const SizedBox(height: 24),
-                        ],
                         if (_recognizedText != null &&
                             _recognizedText!.isNotEmpty) ...[
-                          Container(
-                            padding: const EdgeInsets.all(20),
-                            decoration: BoxDecoration(
-                              color: Colors.white,
-                              borderRadius: BorderRadius.circular(16),
-                              border: Border.all(color: Colors.grey.shade200.withOpacity(0.5)),
-                              boxShadow: [
-                                BoxShadow(
-                                  color: Colors.grey.shade100,
-                                  blurRadius: 8,
-                                  offset: const Offset(0, 2),
-                                ),
-                              ],
-                            ),
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text(
-                                  '인식된 텍스트',
-                                  style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                                        fontWeight: FontWeight.w600,
-                                        fontSize: 16,
-                                        letterSpacing: -0.3,
-                                      ),
-                                ),
-                                const SizedBox(height: 16),
-                                Builder(
-                                  builder: (context) {
-                                    return GestureDetector(
-                                      onDoubleTapDown: (details) async {
-                                        await _handleWordDoubleTap(context, details, _recognizedText!);
-                                      },
-                                      child: SelectableText(
-                                        _recognizedText!,
-                                        textAlign: TextAlign.justify,
-                                        textDirection: TextDirection.ltr,
-                                        style: Theme.of(context).textTheme.bodyLarge?.copyWith(
-                                              height: 1.6,
-                                              fontSize: 15,
-                                              color: Colors.grey.shade800,
-                                            ),
-                                      ),
-                                    );
-                                  },
-                                ),
-                              ],
-                            ),
+                          RecognizedTextDisplay(
+                            recognizedText: _recognizedText!,
+                            onWordDoubleTap: _handleWordDoubleTap,
                           ),
                           const SizedBox(height: 24),
                         ],
@@ -569,9 +521,70 @@ class _MyHomePageState extends State<MyHomePage> {
     return !RegExp(r'[aeiouAEIOU]').hasMatch(char);
   }
 
+  String _getSentenceContainingWord(String text, String word, int wordPosition) {
+    // 문장의 시작과 끝을 찾기
+    int sentenceStart = 0;
+    int sentenceEnd = text.length;
+
+    // 문장 시작 찾기 (단어 위치에서 앞으로 가면서 문장 끝 문자 찾기)
+    for (int i = wordPosition - 1; i >= 0; i--) {
+      if (text[i] == '.' || text[i] == '!' || text[i] == '?') {
+        sentenceStart = i + 1;
+        break;
+      }
+    }
+
+    // 문장 끝 찾기 (단어 위치에서 뒤로 가면서 문장 끝 문자 찾기)
+    for (int i = wordPosition + word.length; i < text.length; i++) {
+      if (text[i] == '.' || text[i] == '!' || text[i] == '?') {
+        sentenceEnd = i + 1;
+        break;
+      }
+    }
+
+    // 문장 추출 및 정리
+    String sentence = text.substring(sentenceStart, sentenceEnd).trim();
+    // 앞뒤 공백 제거 및 연속된 공백을 하나로
+    sentence = sentence.replaceAll(RegExp(r'\s+'), ' ');
+    
+    return sentence;
+  }
+
   Future<void> _handleWordDoubleTap(BuildContext context, TapDownDetails details, String text) async {
     final word = _getWordAtPosition(context, details, text);
     if (word.isEmpty) return;
+
+    // 단어의 위치 찾기
+    final RenderBox? box = context.findRenderObject() as RenderBox?;
+    if (box == null) return;
+
+    final textPainter = TextPainter(
+      text: TextSpan(
+        text: text,
+        style: Theme.of(context).textTheme.bodyLarge?.copyWith(
+              height: 1.6,
+              fontSize: 15,
+              color: Colors.grey.shade800,
+            ),
+      ),
+      textAlign: TextAlign.justify,
+      textDirection: TextDirection.ltr,
+      maxLines: null,
+    );
+    textPainter.layout(maxWidth: box.size.width);
+
+    final localPosition = box.globalToLocal(details.globalPosition);
+    final offset = textPainter.getPositionForOffset(localPosition);
+    final textOffset = offset.offset;
+
+    // 단어의 시작 위치 찾기
+    int wordStart = textOffset;
+    while (wordStart > 0 && _isWordChar(text[wordStart - 1])) {
+      wordStart--;
+    }
+
+    // 단어가 포함된 문장 추출
+    final sentence = _getSentenceContainingWord(text, word, wordStart);
 
     final baseForm = _getWordBaseForm(word);
     print('선택된 단어: $word, 원형: $baseForm');
@@ -589,16 +602,11 @@ class _MyHomePageState extends State<MyHomePage> {
 
       if (docSnapshot.exists) {
         final data = docSnapshot.data();
-        if (mounted) {
-          setState(() {
-            _selectedWordData = data;
-          });
+        if (mounted && data != null) {
+          WordDetailDialog.show(context, data, sentence, word);
         }
       } else {
         if (mounted) {
-          setState(() {
-            _selectedWordData = null;
-          });
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(content: Text('"$word" 단어를 찾을 수 없습니다.')),
           );
@@ -613,193 +621,5 @@ class _MyHomePageState extends State<MyHomePage> {
     }
   }
 
-  Widget _buildWordCard(Map<String, dynamic> wordData) {
-    if (wordData['meanings'] == null) return const SizedBox.shrink();
-
-    return Container(
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: Colors.grey.shade200.withOpacity(0.5)),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.grey.shade100,
-            blurRadius: 8,
-            offset: const Offset(0, 2),
-          ),
-        ],
-      ),
-      child: Padding(
-        padding: const EdgeInsets.all(20),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            // 닫기 버튼
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Text(
-                  '단어 검색 결과',
-                  style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                        fontWeight: FontWeight.w600,
-                        fontSize: 18,
-                        letterSpacing: -0.3,
-                      ),
-                ),
-                IconButton(
-                  icon: const Icon(Icons.close, size: 20),
-                  onPressed: () {
-                    setState(() {
-                      _selectedWordData = null;
-                    });
-                  },
-                  padding: EdgeInsets.zero,
-                  constraints: const BoxConstraints(),
-                ),
-              ],
-            ),
-            const SizedBox(height: 16),
-            // meanings 배열을 순회하며 각 의미 표시
-            ...(wordData['meanings'] as List).asMap().entries.map((entry) {
-              final index = entry.key;
-              final meaning = entry.value as Map<String, dynamic>;
-              
-              return Padding(
-                padding: EdgeInsets.only(
-                  bottom: index < (wordData['meanings'] as List).length - 1 ? 16 : 0,
-                ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    // Definition
-                    if (meaning['definition'] != null) ...[
-                      _buildDefinitionContent(meaning['definition']),
-                      if (meaning['examples'] != null) const SizedBox(height: 16),
-                    ],
-                    // Examples
-                    if (meaning['examples'] != null) ...[
-                      _buildExampleContent(meaning['examples']),
-                    ],
-                  ],
-                ),
-              );
-            }).toList(),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildDefinitionContent(dynamic definition) {
-    if (definition is List) {
-      return Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: definition.asMap().entries.map((entry) {
-          final index = entry.key;
-          final item = entry.value;
-          return Padding(
-            padding: EdgeInsets.only(bottom: index < definition.length - 1 ? 12 : 0),
-            child: Text(
-              item.toString(),
-              style: Theme.of(context).textTheme.bodyLarge?.copyWith(
-                    height: 1.6,
-                    fontSize: 15,
-                    color: Colors.grey.shade800,
-                  ),
-              textAlign: TextAlign.justify,
-            ),
-          );
-        }).toList(),
-      );
-    } else {
-      return Text(
-        definition.toString(),
-        style: Theme.of(context).textTheme.bodyLarge?.copyWith(
-              height: 1.6,
-              fontSize: 15,
-              color: Colors.grey.shade800,
-            ),
-        textAlign: TextAlign.justify,
-      );
-    }
-  }
-
-  Widget _buildExampleContent(dynamic example) {
-    Widget buildExampleText(String text) {
-      final List<TextSpan> spans = [];
-      final RegExp boldRegex = RegExp(r'\*\*(.*?)\*\*');
-      int lastIndex = 0;
-
-      for (final match in boldRegex.allMatches(text)) {
-        if (match.start > lastIndex) {
-          spans.add(TextSpan(
-            text: text.substring(lastIndex, match.start),
-            style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                  height: 1.6,
-                  fontSize: 14,
-                  color: Colors.grey.shade800,
-                ),
-          ));
-        }
-        spans.add(TextSpan(
-          text: match.group(1),
-          style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                height: 1.6,
-                fontSize: 14,
-                color: const Color(0xFF6366F1),
-                fontWeight: FontWeight.w600,
-              ),
-        ));
-        lastIndex = match.end;
-      }
-      if (lastIndex < text.length) {
-        spans.add(TextSpan(
-          text: text.substring(lastIndex),
-          style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                height: 1.6,
-                fontSize: 14,
-                color: Colors.grey.shade800,
-              ),
-        ));
-      }
-
-      return Text.rich(
-        TextSpan(children: spans),
-        textAlign: TextAlign.justify,
-      );
-    }
-
-    if (example is List) {
-      return Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: example.asMap().entries.map((entry) {
-          final index = entry.key;
-          final item = entry.value;
-          return Padding(
-            padding: EdgeInsets.only(bottom: index < example.length - 1 ? 12 : 0),
-            child: Container(
-              padding: const EdgeInsets.all(14),
-              decoration: BoxDecoration(
-                color: Colors.grey.shade50,
-                borderRadius: BorderRadius.circular(12),
-                border: Border.all(color: Colors.grey.shade200),
-              ),
-              child: buildExampleText(item.toString()),
-            ),
-          );
-        }).toList(),
-      );
-    } else {
-      return Container(
-        padding: const EdgeInsets.all(14),
-        decoration: BoxDecoration(
-          color: Colors.grey.shade50,
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: Colors.grey.shade200),
-        ),
-        child: buildExampleText(example.toString()),
-      );
-    }
-  }
 }
 
