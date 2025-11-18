@@ -133,7 +133,7 @@ class _SearchingWordsState extends State<SearchingWords> {
           style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                 height: 1.6,
                 fontSize: 14,
-                color: Colors.blue.shade700,
+                color: const Color(0xFF6366F1),
                 fontWeight: FontWeight.w600,
               ),
         ));
@@ -448,9 +448,16 @@ class _SearchingWordsState extends State<SearchingWords> {
       children: [
         Container(
           decoration: BoxDecoration(
-            color: Colors.grey.shade50,
+            color: Colors.white,
             borderRadius: BorderRadius.circular(12),
             border: Border.all(color: Colors.grey.shade200),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.grey.shade100,
+                blurRadius: 4,
+                offset: const Offset(0, 2),
+              ),
+            ],
           ),
           child: Row(
             children: [
@@ -475,7 +482,14 @@ class _SearchingWordsState extends State<SearchingWords> {
               Container(
                 margin: const EdgeInsets.only(right: 8),
                 decoration: BoxDecoration(
-                  color: Colors.black,
+                  gradient: const LinearGradient(
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                    colors: [
+                      Color(0xFF6366F1), // 인디고
+                      Color(0xFF8B5CF6), // 퍼플
+                    ],
+                  ),
                   borderRadius: BorderRadius.circular(8),
                 ),
                 child: Material(
@@ -523,7 +537,14 @@ class _SearchingWordsState extends State<SearchingWords> {
                 decoration: BoxDecoration(
                   color: Colors.white,
                   borderRadius: BorderRadius.circular(16),
-                  border: Border.all(color: Colors.grey.shade200),
+                  border: Border.all(color: Colors.grey.shade200.withOpacity(0.5)),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.grey.shade100,
+                      blurRadius: 8,
+                      offset: const Offset(0, 2),
+                    ),
+                  ],
                 ),
                 child: Padding(
                   padding: const EdgeInsets.all(20),
@@ -553,63 +574,11 @@ class _SearchingWordsState extends State<SearchingWords> {
                       ),
                       // Definition 섹션
                       if (meaning['definition'] != null) ...[
-                        Row(
-                          children: [
-                            Container(
-                              padding: const EdgeInsets.all(6),
-                              decoration: BoxDecoration(
-                                color: Colors.grey.shade100,
-                                borderRadius: BorderRadius.circular(8),
-                              ),
-                              child: Icon(
-                                Icons.book_outlined,
-                                size: 18,
-                                color: Colors.grey.shade700,
-                              ),
-                            ),
-                            const SizedBox(width: 12),
-                            Text(
-                              '정의',
-                              style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                                    fontWeight: FontWeight.w600,
-                                    fontSize: 16,
-                                    letterSpacing: -0.3,
-                                  ),
-                            ),
-                          ],
-                        ),
-                        const SizedBox(height: 16),
                         _buildDefinitionContent(meaning['definition']),
                         if (meaning['examples'] != null) const SizedBox(height: 24),
                       ],
                       // Examples 섹션
                       if (meaning['examples'] != null) ...[
-                        Row(
-                          children: [
-                            Container(
-                              padding: const EdgeInsets.all(6),
-                              decoration: BoxDecoration(
-                                color: Colors.grey.shade100,
-                                borderRadius: BorderRadius.circular(8),
-                              ),
-                              child: Icon(
-                                Icons.lightbulb_outline,
-                                size: 18,
-                                color: Colors.grey.shade700,
-                              ),
-                            ),
-                            const SizedBox(width: 12),
-                            Text(
-                              '예문',
-                              style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                                    fontWeight: FontWeight.w600,
-                                    fontSize: 16,
-                                    letterSpacing: -0.3,
-                                  ),
-                            ),
-                          ],
-                        ),
-                        const SizedBox(height: 16),
                         _buildExampleContent(meaning['examples']),
                       ],
                     ],

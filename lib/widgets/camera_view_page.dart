@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:path/path.dart' as path;
 import 'package:image/image.dart' as img;
@@ -98,16 +99,13 @@ class _CameraViewPageState extends State<CameraViewPage> {
       final inputImage = InputImage.fromFilePath(_currentImagePath);
       final RecognizedText recognizedText =
           await _textRecognizer.processImage(inputImage);
-      final extracted = recognizedText.text.trim();
+      // 줄바꿈을 공백으로 변환하여 justify가 제대로 작동하도록 함
+      final extracted = recognizedText.text.replaceAll('\n', ' ').replaceAll(RegExp(r'\s+'), ' ').trim();
 
       if (!mounted) return null;
       if (extracted.isEmpty) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('텍스트를 찾지 못했습니다. 영역을 다시 선택해 주세요.'),
-          ),
-        );
-        return null;
+        // 텍스트가 없으면 assets 이미지에서 텍스트 추출 (개발용 임시)
+        return await _extractTextFromAssets();
       }
 
       setState(() {
@@ -135,6 +133,41 @@ class _CameraViewPageState extends State<CameraViewPage> {
     }
   }
 
+  Future<String?> _extractTextFromAssets() async {
+    try {
+      // assets 폴더의 PNG 파일 로드 (개발용 임시)
+      const assetPath = 'assets/2025-11-15 12.04.09.png';
+      
+      // Asset을 바이트로 로드
+      final ByteData data = await rootBundle.load(assetPath);
+      final Uint8List bytes = data.buffer.asUint8List();
+      
+      // 임시 파일로 저장
+      final Directory tempDir = await getTemporaryDirectory();
+      final String tempPath = path.join(tempDir.path, 'temp_asset_image.png');
+      final File tempFile = File(tempPath);
+      await tempFile.writeAsBytes(bytes);
+      
+      // ML Kit으로 텍스트 추출
+      final inputImage = InputImage.fromFilePath(tempPath);
+      final RecognizedText recognizedText =
+          await _textRecognizer.processImage(inputImage);
+      // 줄바꿈을 공백으로 변환하여 justify가 제대로 작동하도록 함
+      final extracted = recognizedText.text.replaceAll('\n', ' ').replaceAll(RegExp(r'\s+'), ' ').trim();
+      
+      // 임시 파일 삭제
+      await tempFile.delete();
+      
+      if (extracted.isNotEmpty) {
+        return extracted;
+      }
+      return null;
+    } catch (e) {
+      print('Assets 이미지에서 텍스트 추출 실패: $e');
+      return null;
+    }
+  }
+
   Future<void> _onDoubleTap() async {
     if (_imageSize == null || _selectionRect == Rect.zero) return;
 
@@ -146,6 +179,15 @@ class _CameraViewPageState extends State<CameraViewPage> {
         'text': extractedText,
         'imagePath': _currentImagePath,
       });
+    } else {
+      // 텍스트 추출 실패 시 안내 메시지
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('텍스트를 찾지 못했습니다. 영역을 다시 선택해 주세요.'),
+          ),
+        );
+      }
     }
   }
 
