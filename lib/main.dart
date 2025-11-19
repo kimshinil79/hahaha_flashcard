@@ -501,7 +501,7 @@ class _MyHomePageState extends State<MyHomePage> {
                           Expanded(
                             child: RecognizedTextDisplay(
                               recognizedText: _recognizedText!,
-                              onWordDoubleTap: _handleWordDoubleTap,
+                              onWordSelected: _handleWordSelected,
                               onClose: _clearRecognizedText,
                             ),
                           ),
@@ -581,60 +581,6 @@ class _MyHomePageState extends State<MyHomePage> {
         ),
       ),
     );
-  }
-
-  String _getWordAtPosition(BuildContext context, TapDownDetails details, String text, double scrollOffset) {
-    final RenderBox? box = context.findRenderObject() as RenderBox?;
-    if (box == null) return '';
-
-    // 텍스트의 위치를 계산하여 단어 추출
-    final textPainter = TextPainter(
-      text: TextSpan(
-        text: text,
-        style: Theme.of(context).textTheme.bodyLarge?.copyWith(
-              height: 1.6,
-              fontSize: 15,
-              color: Colors.grey.shade800,
-            ),
-      ),
-      textAlign: TextAlign.justify,
-      textDirection: TextDirection.ltr,
-      maxLines: null,
-    );
-    textPainter.layout(maxWidth: box.size.width);
-
-    final localPosition = box.globalToLocal(details.globalPosition);
-    // 스크롤 오프셋을 고려하여 Y 좌표 조정
-    final adjustedPosition = Offset(localPosition.dx, localPosition.dy + scrollOffset);
-    final offset = textPainter.getPositionForOffset(adjustedPosition);
-    final textOffset = offset.offset;
-
-    // 텍스트에서 해당 위치의 단어 추출
-    if (textOffset >= 0 && textOffset < text.length) {
-      int start = textOffset;
-      int end = textOffset;
-
-      // 단어의 시작 위치 찾기
-      while (start > 0 && _isWordChar(text[start - 1])) {
-        start--;
-      }
-
-      // 단어의 끝 위치 찾기
-      while (end < text.length && _isWordChar(text[end])) {
-        end++;
-      }
-
-      if (start < end) {
-        return text.substring(start, end);
-      }
-    }
-
-    return '';
-  }
-
-  bool _isWordChar(String char) {
-    if (char.isEmpty) return false;
-    return RegExp(r'[a-zA-Z0-9]').hasMatch(char) || char == "'";
   }
 
   String _getWordBaseForm(String word) {
@@ -748,13 +694,23 @@ class _MyHomePageState extends State<MyHomePage> {
     return !RegExp(r'[aeiouAEIOU]').hasMatch(char);
   }
 
-  String _getSentenceContainingWord(String text, String word, int wordPosition) {
+  String _getSentenceContainingWordFromText(String text, String word) {
+    // 단어가 포함된 첫 번째 위치 찾기 (대소문자 무시)
+    final wordLower = word.toLowerCase();
+    final textLower = text.toLowerCase();
+    final wordIndex = textLower.indexOf(wordLower);
+    
+    if (wordIndex == -1) {
+      // 단어를 찾을 수 없으면 빈 문자열 반환
+      return '';
+    }
+
     // 문장의 시작과 끝을 찾기
     int sentenceStart = 0;
     int sentenceEnd = text.length;
 
     // 문장 시작 찾기 (단어 위치에서 앞으로 가면서 문장 끝 문자 찾기)
-    for (int i = wordPosition - 1; i >= 0; i--) {
+    for (int i = wordIndex - 1; i >= 0; i--) {
       if (text[i] == '.' || text[i] == '!' || text[i] == '?') {
         sentenceStart = i + 1;
         break;
@@ -762,7 +718,7 @@ class _MyHomePageState extends State<MyHomePage> {
     }
 
     // 문장 끝 찾기 (단어 위치에서 뒤로 가면서 문장 끝 문자 찾기)
-    for (int i = wordPosition + word.length; i < text.length; i++) {
+    for (int i = wordIndex + word.length; i < text.length; i++) {
       if (text[i] == '.' || text[i] == '!' || text[i] == '?') {
         sentenceEnd = i + 1;
         break;
@@ -777,43 +733,14 @@ class _MyHomePageState extends State<MyHomePage> {
     return sentence;
   }
 
-  Future<void> _handleWordDoubleTap(BuildContext context, TapDownDetails details, String text, double scrollOffset) async {
-    final word = _getWordAtPosition(context, details, text, scrollOffset);
+  Future<void> _handleWordSelected(String selectedWord) async {
+    if (selectedWord.isEmpty || _recognizedText == null) return;
+
+    final word = selectedWord.trim();
     if (word.isEmpty) return;
 
-    // 단어의 위치 찾기
-    final RenderBox? box = context.findRenderObject() as RenderBox?;
-    if (box == null) return;
-
-    final textPainter = TextPainter(
-      text: TextSpan(
-        text: text,
-        style: Theme.of(context).textTheme.bodyLarge?.copyWith(
-              height: 1.6,
-              fontSize: 15,
-              color: Colors.grey.shade800,
-            ),
-      ),
-      textAlign: TextAlign.justify,
-      textDirection: TextDirection.ltr,
-      maxLines: null,
-    );
-    textPainter.layout(maxWidth: box.size.width);
-
-    final localPosition = box.globalToLocal(details.globalPosition);
-    // 스크롤 오프셋을 고려하여 Y 좌표 조정
-    final adjustedPosition = Offset(localPosition.dx, localPosition.dy + scrollOffset);
-    final offset = textPainter.getPositionForOffset(adjustedPosition);
-    final textOffset = offset.offset;
-
-    // 단어의 시작 위치 찾기
-    int wordStart = textOffset;
-    while (wordStart > 0 && _isWordChar(text[wordStart - 1])) {
-      wordStart--;
-    }
-
-    // 단어가 포함된 문장 추출
-    final sentence = _getSentenceContainingWord(text, word, wordStart);
+    // 단어가 포함된 문장 추출 (전체 텍스트에서 해당 단어가 포함된 첫 번째 문장 찾기)
+    final sentence = _getSentenceContainingWordFromText(_recognizedText!, word);
 
     final baseForm = _getWordBaseForm(word);
     print('선택된 단어: $word, 원형: $baseForm');

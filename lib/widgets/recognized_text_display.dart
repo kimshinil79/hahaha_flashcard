@@ -1,14 +1,15 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 
 class RecognizedTextDisplay extends StatefulWidget {
   final String recognizedText;
-  final Function(BuildContext, TapDownDetails, String, double) onWordDoubleTap;
+  final Function(String selectedText) onWordSelected;
   final VoidCallback onClose;
 
   const RecognizedTextDisplay({
     super.key,
     required this.recognizedText,
-    required this.onWordDoubleTap,
+    required this.onWordSelected,
     required this.onClose,
   });
 
@@ -22,6 +23,8 @@ class _RecognizedTextDisplayState extends State<RecognizedTextDisplay> {
   static const double _maxFontSize = 24.0;
   static const double _fontSizeStep = 1.0;
   final ScrollController _scrollController = ScrollController();
+  Timer? _selectionTimer;
+  TextSelection? _lastSelection;
 
   void _increaseFontSize() {
     setState(() {
@@ -104,31 +107,51 @@ class _RecognizedTextDisplayState extends State<RecognizedTextDisplay> {
           const SizedBox(height: 16),
           // 스크롤 가능한 본문 (나머지 공간 모두 사용)
           Expanded(
-            child: Builder(
-              builder: (context) {
-                return GestureDetector(
-                  onDoubleTapDown: (details) async {
-                    // 스크롤 오프셋 가져오기
-                    final scrollOffset = _scrollController.hasClients 
-                        ? _scrollController.offset 
-                        : 0.0;
-                    await widget.onWordDoubleTap(context, details, widget.recognizedText, scrollOffset);
-                  },
-                  child: SingleChildScrollView(
-                    controller: _scrollController,
-                    child: SelectableText(
-                      widget.recognizedText,
-                      textAlign: TextAlign.justify,
-                      textDirection: TextDirection.ltr,
-                      style: Theme.of(context).textTheme.bodyLarge?.copyWith(
-                            height: 1.6,
-                            fontSize: _fontSize,
-                            color: Colors.grey.shade800,
-                          ),
-                    ),
-                  ),
-                );
-              },
+            child: SingleChildScrollView(
+              controller: _scrollController,
+              child: SelectableText.rich(
+                TextSpan(
+                  text: widget.recognizedText,
+                  style: Theme.of(context).textTheme.bodyLarge?.copyWith(
+                        height: 1.6,
+                        fontSize: _fontSize,
+                        color: Colors.grey.shade800,
+                      ),
+                ),
+                textAlign: TextAlign.justify,
+                textDirection: TextDirection.ltr,
+                selectionControls: MaterialTextSelectionControls(),
+                onSelectionChanged: (selection, cause) {
+                  // 이전 타이머 취소
+                  _selectionTimer?.cancel();
+                  
+                  // 선택이 유효하고 비어있지 않으면 타이머 시작
+                  if (selection.isValid && !selection.isCollapsed) {
+                    _lastSelection = selection;
+                    // 500ms 후에 선택이 완료된 것으로 간주
+                    _selectionTimer = Timer(const Duration(milliseconds: 500), () {
+                      if (mounted && _lastSelection != null && 
+                          _lastSelection!.isValid && !_lastSelection!.isCollapsed) {
+                        final selectedText = widget.recognizedText.substring(
+                          _lastSelection!.start,
+                          _lastSelection!.end,
+                        );
+                        // 선택된 텍스트에서 단어만 추출 (공백, 구두점 제거)
+                        final word = selectedText.trim().split(RegExp(r'[\s\p{P}]')).firstWhere(
+                          (w) => w.isNotEmpty,
+                          orElse: () => '',
+                        );
+                        if (word.isNotEmpty) {
+                          widget.onWordSelected(word);
+                        }
+                        _lastSelection = null;
+                      }
+                    });
+                  } else {
+                    _lastSelection = null;
+                  }
+                },
+              ),
             ),
           ),
         ],
@@ -138,6 +161,7 @@ class _RecognizedTextDisplayState extends State<RecognizedTextDisplay> {
 
   @override
   void dispose() {
+    _selectionTimer?.cancel();
     _scrollController.dispose();
     super.dispose();
   }
