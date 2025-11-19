@@ -14,6 +14,7 @@ import 'widgets/word_search_dialog.dart';
 import 'widgets/selected_word_list.dart';
 import 'widgets/add_to_flashcard_dialog.dart';
 import 'widgets/flashcard_study_screen.dart';
+import 'widgets/study_calendar_widget.dart';
 import 'dart:convert';
 
 void main() async {
@@ -158,6 +159,7 @@ class _MyHomePageState extends State<MyHomePage> {
   // 학습할 단어 목록 (viewCount 낮은 순)
   List<Map<String, dynamic>> _studyFlashcards = [];
   bool _isLoadingFlashcards = false;
+  int _calendarRefreshKey = 0;
 
   @override
   void initState() {
@@ -234,9 +236,15 @@ class _MyHomePageState extends State<MyHomePage> {
           flashcards: _studyFlashcards,
         ),
       ),
-    ).then((_) {
+    ).then((result) {
       // 공부 화면에서 돌아오면 다시 로드
       _loadStudyFlashcards();
+      // 공부 완료 시 달력도 새로고침 (setState로 트리거)
+      if (result == true) {
+        setState(() {
+          _calendarRefreshKey++;
+        });
+      }
     });
   }
 
@@ -432,6 +440,12 @@ class _MyHomePageState extends State<MyHomePage> {
                               ],
                             ),
                           ),
+                        ),
+                        const SizedBox(height: 20),
+                        // 달력 위젯
+                        StudyCalendarWidget(
+                          key: ValueKey(_calendarRefreshKey),
+                          refreshTrigger: _calendarRefreshKey,
                         ),
                         const SizedBox(height: 20),
                         if (_selectedWordMeanings.isNotEmpty) ...[
