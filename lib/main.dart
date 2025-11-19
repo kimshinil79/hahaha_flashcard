@@ -452,30 +452,7 @@ class _MyHomePageState extends State<MyHomePage> {
                           ),
                         ],
                         if (_recognizedText == null) ...[
-                          Expanded(
-                            child: Center(
-                              child: Column(
-                                mainAxisAlignment: MainAxisAlignment.center,
-                                children: [
-                                  Icon(
-                                    Icons.camera_alt_outlined,
-                                    size: 64,
-                                    color: Colors.grey.shade400,
-                                  ),
-                                  const SizedBox(height: 16),
-                                  Text(
-                                    '카메라 버튼을 눌러\n사진을 찍고 텍스트를 추출해보세요',
-                                    textAlign: TextAlign.center,
-                                    style: Theme.of(context).textTheme.bodyLarge?.copyWith(
-                                          color: Colors.grey.shade600,
-                                          fontSize: 15,
-                                          height: 1.5,
-                                        ),
-                                  ),
-                                ],
-                              ),
-                            ),
-                          ),
+                          const Expanded(child: SizedBox.shrink()),
                         ],
                       ],
                     ),

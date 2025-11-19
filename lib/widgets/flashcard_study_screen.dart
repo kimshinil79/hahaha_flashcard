@@ -15,14 +15,18 @@ class FlashcardStudyScreen extends StatefulWidget {
 }
 
 class _FlashcardStudyScreenState extends State<FlashcardStudyScreen>
-    with SingleTickerProviderStateMixin {
+    with TickerProviderStateMixin {
   int _currentIndex = 0;
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
-  final Set<int> _viewedIndices = {}; // 본 단어 인덱스 추적
   late List<Map<String, dynamic>> _flashcards; // 로컬 복사본
   bool _isFlipped = false; // 카드가 뒤집혔는지 여부
   late AnimationController _flipController;
   late Animation<double> _flipAnimation;
+  final Map<String, int> _starCounts = {}; // 단어별 별 개수 (word -> star count)
+  
+  // 슬라이드 애니메이션
+  late AnimationController _slideController;
+  late Animation<Offset> _slideAnimation;
 
   @override
   void initState() {
@@ -39,20 +43,29 @@ class _FlashcardStudyScreenState extends State<FlashcardStudyScreen>
       CurvedAnimation(parent: _flipController, curve: Curves.easeInOut),
     );
 
-    // 첫 번째 단어를 볼 때 viewCount 업데이트
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      _updateViewCount(0);
-    });
+    // 슬라이드 애니메이션 초기화
+    _slideController = AnimationController(
+      duration: const Duration(milliseconds: 300),
+      vsync: this,
+    );
+    _slideAnimation = Tween<Offset>(
+      begin: Offset.zero,
+      end: Offset.zero,
+    ).animate(CurvedAnimation(
+      parent: _slideController,
+      curve: Curves.easeInOut,
+    ));
+
+    // 모든 단어의 별 개수를 0으로 초기화
+    for (var flashcard in _flashcards) {
+      final word = flashcard['word'] as String;
+      _starCounts[word] = 0;
+    }
   }
 
-  Future<void> _updateViewCount(int index) async {
-    if (_viewedIndices.contains(index)) return; // 이미 본 단어는 제외
-
+  Future<void> _updateAllViewCounts() async {
     final user = FirebaseAuth.instance.currentUser;
     if (user == null) return;
-
-    final flashcard = _flashcards[index];
-    final word = flashcard['word'] as String;
 
     try {
       final userDocRef = _firestore.collection('users').doc(user.uid);
@@ -63,29 +76,23 @@ class _FlashcardStudyScreenState extends State<FlashcardStudyScreen>
       final userData = userDoc.data() ?? {};
       final flashcards = (userData['flashcards'] as List<dynamic>?) ?? [];
 
-      // 해당 단어 찾아서 viewCount 증가
+      // 모든 단어의 viewCount 증가
       for (int i = 0; i < flashcards.length; i++) {
         final card = flashcards[i] as Map<String, dynamic>;
-        if (card['word'] == word) {
+        final word = card['word'] as String;
+        
+        // 별 2개를 받은 단어만 viewCount 증가
+        if (_starCounts[word] == 2) {
           final currentViewCount = card['viewCount'] as int? ?? 0;
           card['viewCount'] = currentViewCount + 1;
           flashcards[i] = card;
-
-          // Firestore 업데이트
-          await userDocRef.set({
-            'flashcards': flashcards,
-          }, SetOptions(merge: true));
-
-          // 로컬 상태 업데이트
-          if (mounted) {
-            setState(() {
-              _flashcards[index]['viewCount'] = currentViewCount + 1;
-              _viewedIndices.add(index);
-            });
-          }
-          break;
         }
       }
+
+      // Firestore 업데이트
+      await userDocRef.set({
+        'flashcards': flashcards,
+      }, SetOptions(merge: true));
     } catch (e) {
       print('viewCount 업데이트 실패: $e');
     }
@@ -105,29 +112,123 @@ class _FlashcardStudyScreenState extends State<FlashcardStudyScreen>
   }
 
   void _nextWord() {
-    if (_currentIndex < _flashcards.length - 1) {
-      // 현재 단어의 viewCount 업데이트
-      _updateViewCount(_currentIndex);
-
-      setState(() {
+    if (_flashcards.isEmpty) return;
+    
+    // 우측에서 슬라이드 애니메이션 설정
+    _slideAnimation = Tween<Offset>(
+      begin: const Offset(1.0, 0.0), // 우측에서 시작
+      end: Offset.zero,
+    ).animate(CurvedAnimation(
+      parent: _slideController,
+      curve: Curves.easeInOut,
+    ));
+    
+    _slideController.forward(from: 0.0);
+    
+    setState(() {
+      // 끝에 도달하면 처음으로 돌아가기
+      if (_currentIndex >= _flashcards.length - 1) {
+        _currentIndex = 0;
+      } else {
         _currentIndex++;
-        _isFlipped = false;
-        _flipController.reset();
-      });
-
-      // 다음 단어의 viewCount도 업데이트 (현재 보고 있는 단어)
-      Future.delayed(const Duration(milliseconds: 100), () {
-        _updateViewCount(_currentIndex);
-      });
-    }
+      }
+      _isFlipped = false;
+      _flipController.reset();
+    });
   }
 
   void _previousWord() {
-    if (_currentIndex > 0) {
-      setState(() {
+    if (_flashcards.isEmpty) return;
+    
+    // 좌측에서 슬라이드 애니메이션 설정
+    _slideAnimation = Tween<Offset>(
+      begin: const Offset(-1.0, 0.0), // 좌측에서 시작
+      end: Offset.zero,
+    ).animate(CurvedAnimation(
+      parent: _slideController,
+      curve: Curves.easeInOut,
+    ));
+    
+    _slideController.forward(from: 0.0);
+    
+    setState(() {
+      if (_currentIndex > 0) {
         _currentIndex--;
-        _isFlipped = false;
-        _flipController.reset();
+      } else {
+        // 처음이면 마지막으로
+        _currentIndex = _flashcards.length - 1;
+      }
+      _isFlipped = false;
+      _flipController.reset();
+    });
+  }
+
+  void _addStar() {
+    final currentFlashcard = _flashcards[_currentIndex];
+    final word = currentFlashcard['word'] as String;
+    final currentStars = _starCounts[word] ?? 0;
+
+    if (currentStars < 2) {
+      setState(() {
+        _starCounts[word] = currentStars + 1;
+      });
+
+      // 별 2개를 받은 카드는 목록에서 제거
+      if (_starCounts[word] == 2) {
+        Future.delayed(const Duration(milliseconds: 500), () {
+          if (mounted) {
+            setState(() {
+              _flashcards.removeAt(_currentIndex);
+              
+              // 인덱스 조정 (제거된 카드가 마지막이었으면 처음으로)
+              if (_currentIndex >= _flashcards.length && _flashcards.isNotEmpty) {
+                _currentIndex = 0;
+              } else if (_currentIndex >= _flashcards.length) {
+                _currentIndex = 0;
+              }
+              
+              _isFlipped = false;
+              _flipController.reset();
+            });
+
+            // 모든 카드가 별 2개를 받았는지 확인
+            if (_flashcards.isEmpty) {
+              _onStudyComplete();
+            } else {
+              // 다음 카드로 이동 (끝이면 처음으로)
+              _nextWord();
+            }
+          }
+        });
+      } else {
+        // 별 1개만 받았으면 0.5초 후 다음 카드로 이동 (끝이면 처음으로)
+        Future.delayed(const Duration(milliseconds: 500), () {
+          if (mounted) {
+            _nextWord();
+          }
+        });
+      }
+    }
+  }
+
+  Future<void> _onStudyComplete() async {
+    // 모든 단어의 viewCount 업데이트
+    await _updateAllViewCounts();
+
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('공부를 완료했습니다! 🎉'),
+          backgroundColor: Colors.green,
+          duration: Duration(seconds: 2),
+        ),
+      );
+
+      // 잠시 후 이전 화면으로 돌아가기
+      Future.delayed(const Duration(seconds: 2), () {
+        if (mounted) {
+          Navigator.of(context).pop();
+        }
       });
     }
   }
@@ -245,96 +346,146 @@ class _FlashcardStudyScreenState extends State<FlashcardStudyScreen>
   }
 
   Widget _buildFrontCard(String word) {
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.all(48),
-      decoration: BoxDecoration(
-        gradient: const LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: [
-            Color(0xFF6366F1),
-            Color(0xFF8B5CF6),
-          ],
-        ),
-        borderRadius: BorderRadius.circular(24),
-        boxShadow: [
-          BoxShadow(
-            color: const Color(0xFF6366F1).withOpacity(0.3),
-            blurRadius: 20,
-            offset: const Offset(0, 8),
-          ),
-        ],
-      ),
-      child: Center(
-        child: FittedBox(
-          fit: BoxFit.scaleDown,
-          child: Text(
-            word,
-            style: const TextStyle(
-              color: Colors.white,
-              fontSize: 72,
-              fontWeight: FontWeight.w700,
-              letterSpacing: 1.2,
+    final starCount = _starCounts[word] ?? 0;
+    
+    return Stack(
+      children: [
+        Container(
+          width: double.infinity,
+          padding: const EdgeInsets.all(48),
+          decoration: BoxDecoration(
+            gradient: const LinearGradient(
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+              colors: [
+                Color(0xFF6366F1),
+                Color(0xFF8B5CF6),
+              ],
             ),
-            textAlign: TextAlign.center,
-            maxLines: 1,
+            borderRadius: BorderRadius.circular(24),
+            boxShadow: [
+              BoxShadow(
+                color: const Color(0xFF6366F1).withOpacity(0.3),
+                blurRadius: 20,
+                offset: const Offset(0, 8),
+              ),
+            ],
+          ),
+          child: Center(
+            child: FittedBox(
+              fit: BoxFit.scaleDown,
+              child: Text(
+                word,
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 72,
+                  fontWeight: FontWeight.w700,
+                  letterSpacing: 1.2,
+                ),
+                textAlign: TextAlign.center,
+                maxLines: 1,
+              ),
+            ),
           ),
         ),
-      ),
+        // 별 표시 (우측 상단)
+        if (starCount > 0)
+          Positioned(
+            top: 16,
+            right: 16,
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: List.generate(starCount, (index) {
+                return const Padding(
+                  padding: EdgeInsets.only(left: 4),
+                  child: Icon(
+                    Icons.star,
+                    color: Colors.amber,
+                    size: 28,
+                  ),
+                );
+              }),
+            ),
+          ),
+      ],
     );
   }
 
-  Widget _buildBackCard(Map<String, dynamic> meaning) {
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.all(32),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(24),
-        border: Border.all(color: Colors.grey.shade200, width: 2),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.grey.shade200,
-            blurRadius: 20,
-            offset: const Offset(0, 8),
+  Widget _buildBackCard(String word, Map<String, dynamic> meaning) {
+    final starCount = _starCounts[word] ?? 0;
+    
+    return Stack(
+      children: [
+        Container(
+          width: double.infinity,
+          padding: const EdgeInsets.all(32),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(24),
+            border: Border.all(color: Colors.grey.shade200, width: 2),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.grey.shade200,
+                blurRadius: 20,
+                offset: const Offset(0, 8),
+              ),
+            ],
           ),
-        ],
-      ),
-      child: SingleChildScrollView(
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            // Definition
-            if (meaning['definition'] != null) ...[
-              Text(
-                '정의',
-                style: TextStyle(
-                  fontWeight: FontWeight.w600,
-                  fontSize: 16,
-                  color: Colors.grey.shade700,
-                ),
-              ),
-              const SizedBox(height: 12),
-              _buildDefinitionContent(context, meaning['definition']),
-              if (meaning['examples'] != null) const SizedBox(height: 24),
-            ],
-            // Examples
-            if (meaning['examples'] != null) ...[
-              Text(
-                '예문',
-                style: TextStyle(
-                  fontWeight: FontWeight.w600,
-                  fontSize: 16,
-                  color: Colors.grey.shade700,
-                ),
-              ),
-              const SizedBox(height: 12),
-              _buildExampleContent(context, meaning['examples']),
-            ],
-          ],
+          child: SingleChildScrollView(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                // Definition
+                if (meaning['definition'] != null) ...[
+                  Text(
+                    '정의',
+                    style: TextStyle(
+                      fontWeight: FontWeight.w600,
+                      fontSize: 16,
+                      color: Colors.grey.shade700,
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  _buildDefinitionContent(context, meaning['definition']),
+                  if (meaning['examples'] != null) const SizedBox(height: 24),
+                ],
+                // Examples
+                if (meaning['examples'] != null) ...[
+                  Text(
+                    '예문',
+                    style: TextStyle(
+                      fontWeight: FontWeight.w600,
+                      fontSize: 16,
+                      color: Colors.grey.shade700,
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  _buildExampleContent(context, meaning['examples']),
+                ],
+              ],
+            ),
+          ),
         ),
-      ),
+        // 별 표시 (우측 상단)
+        if (starCount > 0)
+          Positioned(
+            top: 16,
+            right: 16,
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: List.generate(starCount, (index) {
+                return const Padding(
+                  padding: EdgeInsets.only(left: 4),
+                  child: Icon(
+                    Icons.star,
+                    color: Colors.amber,
+                    size: 28,
+                  ),
+                );
+              }),
+            ),
+          ),
+      ],
     );
   }
 
@@ -384,23 +535,27 @@ class _FlashcardStudyScreenState extends State<FlashcardStudyScreen>
                 child: GestureDetector(
                   onTap: _flipCard,
                   child: AnimatedBuilder(
-                    animation: _flipAnimation,
+                    animation: Listenable.merge([_flipAnimation, _slideAnimation]),
                     builder: (context, child) {
                       final angle = _flipAnimation.value * 3.14159; // π
                       final isFront = (_flipAnimation.value < 0.5);
-
-                      return Transform(
-                        alignment: Alignment.center,
-                        transform: Matrix4.identity()
-                          ..setEntry(3, 2, 0.001)
-                          ..rotateY(angle),
-                        child: isFront
-                            ? _buildFrontCard(word)
-                            : Transform(
-                                alignment: Alignment.center,
-                                transform: Matrix4.identity()..rotateY(3.14159), // 180도 뒤집기
-                                child: _buildBackCard(meaning),
-                              ),
+                      
+                      // 슬라이드 애니메이션 적용
+                      return SlideTransition(
+                        position: _slideAnimation,
+                        child: Transform(
+                          alignment: Alignment.center,
+                          transform: Matrix4.identity()
+                            ..setEntry(3, 2, 0.001)
+                            ..rotateY(angle),
+                          child: isFront
+                              ? _buildFrontCard(word)
+                              : Transform(
+                                  alignment: Alignment.center,
+                                  transform: Matrix4.identity()..rotateY(3.14159), // 180도 뒤집기
+                                  child: _buildBackCard(word, meaning),
+                                ),
+                        ),
                       );
                     },
                   ),
@@ -424,21 +579,26 @@ class _FlashcardStudyScreenState extends State<FlashcardStudyScreen>
                     onPressed: _currentIndex > 0 ? _previousWord : null,
                     color: _currentIndex > 0 ? const Color(0xFF6366F1) : Colors.grey,
                   ),
-                  TextButton(
-                    onPressed: _flipCard,
+                  ElevatedButton(
+                    onPressed: _addStar,
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: const Color(0xFF6366F1),
+                      foregroundColor: Colors.white,
+                      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                    ),
                     child: Row(
                       mainAxisSize: MainAxisSize.min,
                       children: [
-                        Icon(
-                          _isFlipped ? Icons.refresh : Icons.flip,
-                          color: const Color(0xFF6366F1),
-                        ),
+                        const Icon(Icons.thumb_up, size: 20),
                         const SizedBox(width: 8),
-                        Text(
-                          _isFlipped ? '다시 뒤집기' : '카드 뒤집기',
-                          style: const TextStyle(
-                            color: Color(0xFF6366F1),
+                        const Text(
+                          'Good Job!',
+                          style: TextStyle(
                             fontWeight: FontWeight.w600,
+                            fontSize: 16,
                           ),
                         ),
                       ],
@@ -446,8 +606,8 @@ class _FlashcardStudyScreenState extends State<FlashcardStudyScreen>
                   ),
                   IconButton(
                     icon: const Icon(Icons.arrow_forward_ios),
-                    onPressed: _currentIndex < _flashcards.length - 1 ? _nextWord : null,
-                    color: _currentIndex < _flashcards.length - 1 ? const Color(0xFF6366F1) : Colors.grey,
+                    onPressed: _flashcards.isNotEmpty ? _nextWord : null,
+                    color: _flashcards.isNotEmpty ? const Color(0xFF6366F1) : Colors.grey,
                   ),
                 ],
               ),
@@ -461,6 +621,7 @@ class _FlashcardStudyScreenState extends State<FlashcardStudyScreen>
   @override
   void dispose() {
     _flipController.dispose();
+    _slideController.dispose();
     super.dispose();
   }
 }
