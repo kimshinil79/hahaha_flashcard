@@ -160,6 +160,23 @@ class _MyHomePageState extends State<MyHomePage> {
   List<Map<String, dynamic>> _studyFlashcards = [];
   bool _isLoadingFlashcards = false;
   int _calendarRefreshKey = 0;
+  static const Map<String, Duration> _difficultyIntervals = {
+    'easy': Duration(days: 5),
+    'normal': Duration(days: 3),
+    'hard': Duration(days: 1),
+  };
+
+  Duration _getDifficultyInterval(String? difficulty) {
+    return _difficultyIntervals[difficulty] ?? const Duration(days: 3);
+  }
+
+  DateTime _computeDueDate(Map<String, dynamic> flashcard) {
+    final lastStudiedTimestamp = flashcard['lastStudiedAt'] as Timestamp?;
+    final lastStudied = lastStudiedTimestamp?.toDate() ??
+        DateTime.fromMillisecondsSinceEpoch(0);
+    final interval = _getDifficultyInterval(flashcard['difficulty'] as String?);
+    return lastStudied.add(interval);
+  }
 
   @override
   void initState() {
@@ -186,12 +203,26 @@ class _MyHomePageState extends State<MyHomePage> {
       if (mounted && userDoc.exists) {
         final userData = userDoc.data();
         final flashcards = (userData?['flashcards'] as List<dynamic>?) ?? [];
+        final now = DateTime.now();
 
-        // viewCount가 낮은 순으로 정렬
         final sortedFlashcards = flashcards
-            .map((f) => f as Map<String, dynamic>)
+            .map((f) => Map<String, dynamic>.from(f as Map<String, dynamic>))
             .toList()
           ..sort((a, b) {
+            final dueA = _computeDueDate(a);
+            final dueB = _computeDueDate(b);
+            final isDueA = now.isAfter(dueA);
+            final isDueB = now.isAfter(dueB);
+
+            if (isDueA != isDueB) {
+              return isDueA ? -1 : 1;
+            }
+
+            final dueComparison = dueA.compareTo(dueB);
+            if (dueComparison != 0) {
+              return dueComparison;
+            }
+
             final viewCountA = a['viewCount'] as int? ?? 0;
             final viewCountB = b['viewCount'] as int? ?? 0;
             return viewCountA.compareTo(viewCountB);
@@ -245,6 +276,12 @@ class _MyHomePageState extends State<MyHomePage> {
           _calendarRefreshKey++;
         });
       }
+    });
+  }
+
+  void _clearRecognizedText() {
+    setState(() {
+      _recognizedText = null;
     });
   }
 
@@ -376,78 +413,81 @@ class _MyHomePageState extends State<MyHomePage> {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.stretch,
                       children: <Widget>[
-                        // 공부 시작 카드 (항상 최상단)
-                        GestureDetector(
-                          onTap: _startStudy,
-                          child: Container(
-                            padding: const EdgeInsets.all(24),
-                            decoration: BoxDecoration(
-                              gradient: const LinearGradient(
-                                begin: Alignment.topLeft,
-                                end: Alignment.bottomRight,
-                                colors: [
-                                  Color(0xFF6366F1),
-                                  Color(0xFF8B5CF6),
+                        if (_recognizedText == null ||
+                            _recognizedText!.isEmpty) ...[
+                          // 공부 시작 카드 (텍스트 추출 전/없을 때만 표시)
+                          GestureDetector(
+                            onTap: _startStudy,
+                            child: Container(
+                              padding: const EdgeInsets.all(24),
+                              decoration: BoxDecoration(
+                                gradient: const LinearGradient(
+                                  begin: Alignment.topLeft,
+                                  end: Alignment.bottomRight,
+                                  colors: [
+                                    Color(0xFF6366F1),
+                                    Color(0xFF8B5CF6),
+                                  ],
+                                ),
+                                borderRadius: BorderRadius.circular(16),
+                                boxShadow: [
+                                  BoxShadow(
+                                    color: const Color(0xFF6366F1).withOpacity(0.3),
+                                    blurRadius: 12,
+                                    offset: const Offset(0, 4),
+                                  ),
                                 ],
                               ),
-                              borderRadius: BorderRadius.circular(16),
-                              boxShadow: [
-                                BoxShadow(
-                                  color: const Color(0xFF6366F1).withOpacity(0.3),
-                                  blurRadius: 12,
-                                  offset: const Offset(0, 4),
-                                ),
-                              ],
-                            ),
-                            child: Row(
-                              children: [
-                                const Icon(
-                                  Icons.school,
-                                  color: Colors.white,
-                                  size: 32,
-                                ),
-                                const SizedBox(width: 16),
-                                Expanded(
-                                  child: Column(
-                                    crossAxisAlignment: CrossAxisAlignment.start,
-                                    children: [
-                                      const Text(
-                                        '공부 시작',
-                                        style: TextStyle(
-                                          color: Colors.white,
-                                          fontSize: 20,
-                                          fontWeight: FontWeight.w700,
-                                        ),
-                                      ),
-                                      const SizedBox(height: 4),
-                                      Text(
-                                        _isLoadingFlashcards
-                                            ? '로딩 중...'
-                                            : '${_studyFlashcards.length}개의 단어가 준비되어 있어요',
-                                        style: TextStyle(
-                                          color: Colors.white.withOpacity(0.9),
-                                          fontSize: 14,
-                                        ),
-                                      ),
-                                    ],
+                              child: Row(
+                                children: [
+                                  const Icon(
+                                    Icons.school,
+                                    color: Colors.white,
+                                    size: 32,
                                   ),
-                                ),
-                                Icon(
-                                  Icons.arrow_forward_ios,
-                                  color: Colors.white.withOpacity(0.8),
-                                  size: 20,
-                                ),
-                              ],
+                                  const SizedBox(width: 16),
+                                  Expanded(
+                                    child: Column(
+                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                      children: [
+                                        const Text(
+                                          '공부 시작',
+                                          style: TextStyle(
+                                            color: Colors.white,
+                                            fontSize: 20,
+                                            fontWeight: FontWeight.w700,
+                                          ),
+                                        ),
+                                        const SizedBox(height: 4),
+                                        Text(
+                                          _isLoadingFlashcards
+                                              ? '로딩 중...'
+                                              : '${_studyFlashcards.length}개의 단어가 준비되어 있어요',
+                                          style: TextStyle(
+                                            color: Colors.white.withOpacity(0.9),
+                                            fontSize: 14,
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                  Icon(
+                                    Icons.arrow_forward_ios,
+                                    color: Colors.white.withOpacity(0.8),
+                                    size: 20,
+                                  ),
+                                ],
+                              ),
                             ),
                           ),
-                        ),
-                        const SizedBox(height: 20),
-                        // 달력 위젯
-                        StudyCalendarWidget(
-                          key: ValueKey(_calendarRefreshKey),
-                          refreshTrigger: _calendarRefreshKey,
-                        ),
-                        const SizedBox(height: 20),
+                          const SizedBox(height: 20),
+                          // 달력 위젯 (텍스트 미표시 시에만 노출)
+                          StudyCalendarWidget(
+                            key: ValueKey(_calendarRefreshKey),
+                            refreshTrigger: _calendarRefreshKey,
+                          ),
+                          const SizedBox(height: 20),
+                        ],
                         if (_selectedWordMeanings.isNotEmpty) ...[
                           SelectedWordList(
                             selectedWords: _selectedWordMeanings,
@@ -462,6 +502,7 @@ class _MyHomePageState extends State<MyHomePage> {
                             child: RecognizedTextDisplay(
                               recognizedText: _recognizedText!,
                               onWordDoubleTap: _handleWordDoubleTap,
+                              onClose: _clearRecognizedText,
                             ),
                           ),
                         ],

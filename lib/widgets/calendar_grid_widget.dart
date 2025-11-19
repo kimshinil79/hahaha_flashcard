@@ -29,14 +29,52 @@ class CalendarGridWidget extends StatelessWidget {
     ) ?? Colors.transparent;
   }
 
-  Color _getCountTextColor(int count) {
+  Color _getCountTextColor(int count, Color backgroundColor) {
     if (count == 0) return Colors.grey.shade600;
     final intensity = _getIntensity(count);
-    return Color.lerp(
-      Colors.grey.shade800,
-      Colors.white70,
+    final baseColor = Color.lerp(
+      const Color(0xFF1F1F39),
+      Colors.white,
       intensity,
-    ) ?? Colors.grey.shade600;
+    ) ?? Colors.white;
+
+    if (backgroundColor == Colors.transparent) {
+      return baseColor.withOpacity(0.8);
+    }
+
+    final luminance = backgroundColor.computeLuminance();
+    if (luminance < 0.2) {
+      return baseColor.withOpacity(0.95);
+    } else if (luminance < 0.4) {
+      return baseColor.withOpacity(0.85);
+    } else if (luminance < 0.6) {
+      return baseColor.withOpacity(0.75);
+    } else {
+      return const Color(0xFF1F1F39).withOpacity(0.8);
+    }
+  }
+
+  Color _getDayTextColor(bool isSelected, bool isToday, int count, Color backgroundColor) {
+    if (isSelected) {
+      if (count == 0 || backgroundColor == Colors.transparent) {
+        return Colors.grey.shade700;
+      }
+      return Colors.white;
+    }
+    if (count == 0 || backgroundColor == Colors.transparent) {
+      return Colors.grey.shade700;
+    }
+
+    final luminance = backgroundColor.computeLuminance();
+    if (luminance < 0.2) {
+      return Colors.white.withOpacity(0.95);
+    } else if (luminance < 0.4) {
+      return Colors.white.withOpacity(0.85);
+    } else if (luminance < 0.6) {
+      return Colors.white.withOpacity(0.75);
+    } else {
+      return const Color(0xFF1F1F39);
+    }
   }
 
   bool _isToday(DateTime date) {
@@ -57,7 +95,8 @@ class CalendarGridWidget extends StatelessWidget {
     final isSelected = _isSelected(date);
     final count = studyCounts[dateStr] ?? 0;
     final backgroundColor = _getDateBackgroundColor(count);
-    final countColor = _getCountTextColor(count);
+    final countColor = _getCountTextColor(count, backgroundColor);
+    final dayColor = _getDayTextColor(isSelected, isToday, count, backgroundColor);
 
     // 테두리 색상 결정
     Color? borderColor;
@@ -93,9 +132,7 @@ class CalendarGridWidget extends StatelessWidget {
               style: TextStyle(
                 fontSize: 14,
                 fontWeight: isSelected || isToday ? FontWeight.w700 : FontWeight.w500,
-                color: count > 0 && !isSelected
-                    ? Colors.white
-                    : Colors.grey.shade700,
+                color: dayColor,
               ),
             ),
             if (count > 0)
@@ -104,7 +141,7 @@ class CalendarGridWidget extends StatelessWidget {
                 style: TextStyle(
                   fontSize: 10,
                   color: isSelected
-                      ? Colors.grey.shade600
+                      ? countColor.withOpacity(0.9)
                       : countColor,
                 ),
               ),

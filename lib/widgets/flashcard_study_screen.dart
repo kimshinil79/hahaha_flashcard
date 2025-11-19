@@ -30,7 +30,7 @@ class _FlashcardStudyScreenState extends State<FlashcardStudyScreen>
   late AnimationController _flipController;
   late Animation<double> _flipAnimation;
   final Map<String, int> _starCounts = {}; // 단어별 별 개수 (word -> star count)
-  final Set<int> _viewedIndices = {};
+  final Set<String> _viewedWords = {};
   
   // 슬라이드 애니메이션
   late AnimationController _slideController;
@@ -99,7 +99,7 @@ class _FlashcardStudyScreenState extends State<FlashcardStudyScreen>
       _isFlipped = false;
       _flipController.reset();
       _initializeStarCounts();
-      _viewedIndices.clear();
+      _viewedWords.clear();
     });
 
     await Future.delayed(const Duration(milliseconds: 200));
@@ -390,7 +390,6 @@ class _FlashcardStudyScreenState extends State<FlashcardStudyScreen>
   }
 
   Future<void> _updateViewCount(int index) async {
-    if (_viewedIndices.contains(index)) return;
     if (index < 0 || index >= _flashcards.length) return;
 
     final user = FirebaseAuth.instance.currentUser;
@@ -398,6 +397,7 @@ class _FlashcardStudyScreenState extends State<FlashcardStudyScreen>
 
     final flashcard = _flashcards[index];
     final word = flashcard['word'] as String;
+    if (_viewedWords.contains(word)) return;
 
     try {
       final userDocRef = _firestore.collection('users').doc(user.uid);
@@ -422,8 +422,10 @@ class _FlashcardStudyScreenState extends State<FlashcardStudyScreen>
           if (mounted) {
             setState(() {
               _flashcards[index]['viewCount'] = currentViewCount + 1;
-              _viewedIndices.add(index);
+              _viewedWords.add(word);
             });
+          } else {
+            _viewedWords.add(word);
           }
           break;
         }
@@ -492,6 +494,8 @@ class _FlashcardStudyScreenState extends State<FlashcardStudyScreen>
 
       final userData = userDoc.data() ?? {};
       final flashcards = (userData['flashcards'] as List<dynamic>?) ?? [];
+      final now = DateTime.now();
+      final timestamp = Timestamp.fromDate(now);
 
       // 모든 단어의 viewCount 증가
       for (int i = 0; i < flashcards.length; i++) {
@@ -501,8 +505,20 @@ class _FlashcardStudyScreenState extends State<FlashcardStudyScreen>
         // 별 2개를 받은 단어만 viewCount 증가
         if (_starCounts[word] == 2) {
           final currentViewCount = card['viewCount'] as int? ?? 0;
-          card['viewCount'] = currentViewCount + 1;
+          final newViewCount = currentViewCount + 1;
+          card['viewCount'] = newViewCount;
+          card['lastStudiedAt'] = timestamp;
           flashcards[i] = card;
+
+          if (mounted) {
+            setState(() {
+              final localIndex = _flashcards.indexWhere((c) => c['word'] == word);
+              if (localIndex != -1) {
+                _flashcards[localIndex]['viewCount'] = newViewCount;
+                _flashcards[localIndex]['lastStudiedAt'] = timestamp;
+              }
+            });
+          }
         }
       }
 
@@ -552,6 +568,12 @@ class _FlashcardStudyScreenState extends State<FlashcardStudyScreen>
       _isFlipped = false;
       _flipController.reset();
     });
+
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) {
+        _updateViewCount(_currentIndex);
+      }
+    });
   }
 
   void _previousWord() {
@@ -577,6 +599,12 @@ class _FlashcardStudyScreenState extends State<FlashcardStudyScreen>
       }
       _isFlipped = false;
       _flipController.reset();
+    });
+
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) {
+        _updateViewCount(_currentIndex);
+      }
     });
   }
 

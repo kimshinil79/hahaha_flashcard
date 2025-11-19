@@ -577,6 +577,7 @@ class _AddToFlashcardDialogState extends State<AddToFlashcardDialog> {
           'viewCount': viewCount,
           'createdAt': createdAt,
           'updatedAt': timestamp,
+          'lastStudiedAt': existingWordData?['lastStudiedAt'],
         };
         
         if (existingIndex >= 0) {

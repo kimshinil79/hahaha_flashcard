@@ -3,11 +3,13 @@ import 'package:flutter/material.dart';
 class RecognizedTextDisplay extends StatefulWidget {
   final String recognizedText;
   final Function(BuildContext, TapDownDetails, String, double) onWordDoubleTap;
+  final VoidCallback onClose;
 
   const RecognizedTextDisplay({
     super.key,
     required this.recognizedText,
     required this.onWordDoubleTap,
+    required this.onClose,
   });
 
   @override
@@ -58,8 +60,14 @@ class _RecognizedTextDisplayState extends State<RecognizedTextDisplay> {
         children: [
           // 글씨 크기 조절 버튼 (고정 위치)
           Row(
-            mainAxisAlignment: MainAxisAlignment.end,
             children: [
+              IconButton(
+                icon: const Icon(Icons.close),
+                tooltip: '닫기',
+                onPressed: widget.onClose,
+                color: Colors.grey.shade600,
+              ),
+              const Spacer(),
               Container(
                 decoration: BoxDecoration(
                   color: Colors.grey.shade50,
