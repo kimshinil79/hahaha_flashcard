@@ -7,10 +7,13 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'firebase_options.dart';
 import 'widgets/camera_screen.dart';
 import 'widgets/camera_view_page.dart';
-import 'widgets/searching_words.dart';
 import 'widgets/login_screen.dart';
 import 'widgets/recognized_text_display.dart';
 import 'widgets/word_detail_dialog.dart';
+import 'widgets/word_search_dialog.dart';
+import 'widgets/selected_word_list.dart';
+import 'widgets/add_to_flashcard_dialog.dart';
+import 'widgets/flashcard_study_screen.dart';
 import 'dart:convert';
 
 void main() async {
@@ -150,11 +153,103 @@ class _MyHomePageState extends State<MyHomePage> {
   static const double _fabSize = 56.0;
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
   Map<String, String>? _irregularWordsMap;
+  // 선택된 단어와 뜻 정보 저장 (리스트로 관리)
+  List<Map<String, dynamic>> _selectedWordMeanings = [];
+  // 학습할 단어 목록 (viewCount 낮은 순)
+  List<Map<String, dynamic>> _studyFlashcards = [];
+  bool _isLoadingFlashcards = false;
 
   @override
   void initState() {
     super.initState();
     _loadIrregularWords();
+    _printCurrentUserDocumentId();
+    _loadStudyFlashcards();
+  }
+
+  Future<void> _loadStudyFlashcards() async {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) return;
+
+    setState(() {
+      _isLoadingFlashcards = true;
+    });
+
+    try {
+      final userDoc = await _firestore
+          .collection('users')
+          .doc(user.uid)
+          .get();
+
+      if (mounted && userDoc.exists) {
+        final userData = userDoc.data();
+        final flashcards = (userData?['flashcards'] as List<dynamic>?) ?? [];
+
+        // viewCount가 낮은 순으로 정렬
+        final sortedFlashcards = flashcards
+            .map((f) => f as Map<String, dynamic>)
+            .toList()
+          ..sort((a, b) {
+            final viewCountA = a['viewCount'] as int? ?? 0;
+            final viewCountB = b['viewCount'] as int? ?? 0;
+            return viewCountA.compareTo(viewCountB);
+          });
+
+        if (mounted) {
+          setState(() {
+            _studyFlashcards = sortedFlashcards.take(10).toList();
+            _isLoadingFlashcards = false;
+          });
+        }
+      } else {
+        if (mounted) {
+          setState(() {
+            _studyFlashcards = [];
+            _isLoadingFlashcards = false;
+          });
+        }
+      }
+    } catch (e) {
+      print('학습 단어 로드 실패: $e');
+      if (mounted) {
+        setState(() {
+          _isLoadingFlashcards = false;
+        });
+      }
+    }
+  }
+
+  void _startStudy() {
+    if (_studyFlashcards.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('학습할 단어가 없습니다.')),
+      );
+      return;
+    }
+
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => FlashcardStudyScreen(
+          flashcards: _studyFlashcards,
+        ),
+      ),
+    ).then((_) {
+      // 공부 화면에서 돌아오면 다시 로드
+      _loadStudyFlashcards();
+    });
+  }
+
+  void _printCurrentUserDocumentId() {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user != null) {
+      print('========================================');
+      print('현재 로그인한 사용자 문서 ID: ${user.uid}');
+      print('현재 로그인한 사용자 이메일: ${user.email ?? 'N/A'}');
+      print('========================================');
+    } else {
+      print('로그인된 사용자가 없습니다.');
+    }
   }
 
   Future<void> _loadIrregularWords() async {
@@ -228,6 +323,16 @@ class _MyHomePageState extends State<MyHomePage> {
         title: Text(widget.title),
         actions: [
           IconButton(
+            icon: const Icon(Icons.search),
+            onPressed: () {
+              showDialog(
+                context: context,
+                builder: (context) => const WordSearchDialog(),
+              );
+            },
+            tooltip: '단어 검색',
+          ),
+          IconButton(
             icon: const Icon(Icons.logout),
             onPressed: () async {
               await FirebaseAuth.instance.signOut();
@@ -258,42 +363,117 @@ class _MyHomePageState extends State<MyHomePage> {
             return Stack(
               children: [
                 Positioned.fill(
-                  child: SingleChildScrollView(
+                  child: Padding(
                     padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 20),
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.stretch,
                       children: <Widget>[
-                        const SearchingWords(),
-                        const SizedBox(height: 32),
-                        if (_recognizedText != null &&
-                            _recognizedText!.isNotEmpty) ...[
-                          RecognizedTextDisplay(
-                            recognizedText: _recognizedText!,
-                            onWordDoubleTap: _handleWordDoubleTap,
-                          ),
-                          const SizedBox(height: 24),
-                        ],
-                        if (_recognizedText == null) ...[
-                          const SizedBox(height: 120),
-                          Center(
-                            child: Column(
-                              children: [
-                                Icon(
-                                  Icons.camera_alt_outlined,
-                                  size: 64,
-                                  color: Colors.grey.shade400,
-                                ),
-                                const SizedBox(height: 16),
-                                Text(
-                                  '카메라 버튼을 눌러\n사진을 찍고 텍스트를 추출해보세요',
-                                  textAlign: TextAlign.center,
-                                  style: Theme.of(context).textTheme.bodyLarge?.copyWith(
-                                        color: Colors.grey.shade600,
-                                        fontSize: 15,
-                                        height: 1.5,
-                                      ),
+                        // 공부 시작 카드 (항상 최상단)
+                        GestureDetector(
+                          onTap: _startStudy,
+                          child: Container(
+                            padding: const EdgeInsets.all(24),
+                            decoration: BoxDecoration(
+                              gradient: const LinearGradient(
+                                begin: Alignment.topLeft,
+                                end: Alignment.bottomRight,
+                                colors: [
+                                  Color(0xFF6366F1),
+                                  Color(0xFF8B5CF6),
+                                ],
+                              ),
+                              borderRadius: BorderRadius.circular(16),
+                              boxShadow: [
+                                BoxShadow(
+                                  color: const Color(0xFF6366F1).withOpacity(0.3),
+                                  blurRadius: 12,
+                                  offset: const Offset(0, 4),
                                 ),
                               ],
+                            ),
+                            child: Row(
+                              children: [
+                                const Icon(
+                                  Icons.school,
+                                  color: Colors.white,
+                                  size: 32,
+                                ),
+                                const SizedBox(width: 16),
+                                Expanded(
+                                  child: Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      const Text(
+                                        '공부 시작',
+                                        style: TextStyle(
+                                          color: Colors.white,
+                                          fontSize: 20,
+                                          fontWeight: FontWeight.w700,
+                                        ),
+                                      ),
+                                      const SizedBox(height: 4),
+                                      Text(
+                                        _isLoadingFlashcards
+                                            ? '로딩 중...'
+                                            : '${_studyFlashcards.length}개의 단어가 준비되어 있어요',
+                                        style: TextStyle(
+                                          color: Colors.white.withOpacity(0.9),
+                                          fontSize: 14,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                                Icon(
+                                  Icons.arrow_forward_ios,
+                                  color: Colors.white.withOpacity(0.8),
+                                  size: 20,
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                        const SizedBox(height: 20),
+                        if (_selectedWordMeanings.isNotEmpty) ...[
+                          SelectedWordList(
+                            selectedWords: _selectedWordMeanings,
+                            onRemove: _removeSelectedWord,
+                            onAddToFlashcard: _showAddToFlashcardDialog,
+                          ),
+                          const SizedBox(height: 16),
+                        ],
+                        if (_recognizedText != null &&
+                            _recognizedText!.isNotEmpty) ...[
+                          Expanded(
+                            child: RecognizedTextDisplay(
+                              recognizedText: _recognizedText!,
+                              onWordDoubleTap: _handleWordDoubleTap,
+                            ),
+                          ),
+                        ],
+                        if (_recognizedText == null) ...[
+                          Expanded(
+                            child: Center(
+                              child: Column(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  Icon(
+                                    Icons.camera_alt_outlined,
+                                    size: 64,
+                                    color: Colors.grey.shade400,
+                                  ),
+                                  const SizedBox(height: 16),
+                                  Text(
+                                    '카메라 버튼을 눌러\n사진을 찍고 텍스트를 추출해보세요',
+                                    textAlign: TextAlign.center,
+                                    style: Theme.of(context).textTheme.bodyLarge?.copyWith(
+                                          color: Colors.grey.shade600,
+                                          fontSize: 15,
+                                          height: 1.5,
+                                        ),
+                                  ),
+                                ],
+                              ),
                             ),
                           ),
                         ],
@@ -371,7 +551,7 @@ class _MyHomePageState extends State<MyHomePage> {
     );
   }
 
-  String _getWordAtPosition(BuildContext context, TapDownDetails details, String text) {
+  String _getWordAtPosition(BuildContext context, TapDownDetails details, String text, double scrollOffset) {
     final RenderBox? box = context.findRenderObject() as RenderBox?;
     if (box == null) return '';
 
@@ -392,7 +572,9 @@ class _MyHomePageState extends State<MyHomePage> {
     textPainter.layout(maxWidth: box.size.width);
 
     final localPosition = box.globalToLocal(details.globalPosition);
-    final offset = textPainter.getPositionForOffset(localPosition);
+    // 스크롤 오프셋을 고려하여 Y 좌표 조정
+    final adjustedPosition = Offset(localPosition.dx, localPosition.dy + scrollOffset);
+    final offset = textPainter.getPositionForOffset(adjustedPosition);
     final textOffset = offset.offset;
 
     // 텍스트에서 해당 위치의 단어 추출
@@ -464,6 +646,10 @@ class _MyHomePageState extends State<MyHomePage> {
       if (beforeEd.endsWith('e')) {
         return beforeEd;
       }
+      // acknowledged -> acknowledge (dg로 끝나는 경우 dge로 변환)
+      if (beforeEd.endsWith('dg')) {
+        return beforeEd.substring(0, beforeEd.length - 2) + 'dge';
+      }
       // stopped -> stop (자음이 두 번 반복되는 경우)
       if (beforeEd.length > 1 && 
           _isConsonant(beforeEd[beforeEd.length - 1]) &&
@@ -492,27 +678,36 @@ class _MyHomePageState extends State<MyHomePage> {
       return beforeIng;
     }
 
-    // 비교급/최상급
+    // 비교급/최상급 (더 제한적으로 처리)
     if (base.endsWith('iest') && base.length > 4) {
       return base.substring(0, base.length - 4) + 'y';
     }
     if (base.endsWith('est') && base.length > 3) {
       final beforeEst = base.substring(0, base.length - 3);
-      if (beforeEst.endsWith('e')) {
+      // 비교급은 보통 짧은 단어이고, 자음이 두 번 반복되는 경우만 처리
+      if (beforeEst.length <= 5 && beforeEst.endsWith('e')) {
         return beforeEst;
       }
-      return beforeEst;
+      // doubled -> double 같은 경우만 (짧은 단어)
+      if (beforeEst.length <= 5) {
+        return beforeEst;
+      }
     }
     if (base.endsWith('ier') && base.length > 3) {
       return base.substring(0, base.length - 3) + 'y';
     }
-    if (base.endsWith('er') && base.length > 2) {
+    // 비교급은 보통 짧은 단어에만 적용
+    // matter, water 같은 긴 단어는 비교급이 아님
+    // 비교급 원형은 보통 3글자 (big -> bigger)
+    // 4글자 원형(fast -> faster)은 실제 비교급이지만, matter처럼 4글자인 일반 단어와 구분하기 어려움
+    // 따라서 매우 제한적으로만 처리: 원형이 3글자이고 e로 끝나지 않는 경우만
+    if (base.endsWith('er') && base.length == 5) { // bigger (5글자) -> big (3글자)
       final beforeEr = base.substring(0, base.length - 2);
-      if (beforeEr.endsWith('e')) {
-        return beforeEr;
+      if (beforeEr.length == 3 && !beforeEr.endsWith('e')) {
+        return beforeEr; // big
       }
-      return beforeEr;
     }
+    // nice -> nicer 같은 경우는 처리하지 않음 (nice는 이미 원형이므로)
 
     return base;
   }
@@ -550,8 +745,8 @@ class _MyHomePageState extends State<MyHomePage> {
     return sentence;
   }
 
-  Future<void> _handleWordDoubleTap(BuildContext context, TapDownDetails details, String text) async {
-    final word = _getWordAtPosition(context, details, text);
+  Future<void> _handleWordDoubleTap(BuildContext context, TapDownDetails details, String text, double scrollOffset) async {
+    final word = _getWordAtPosition(context, details, text, scrollOffset);
     if (word.isEmpty) return;
 
     // 단어의 위치 찾기
@@ -574,7 +769,9 @@ class _MyHomePageState extends State<MyHomePage> {
     textPainter.layout(maxWidth: box.size.width);
 
     final localPosition = box.globalToLocal(details.globalPosition);
-    final offset = textPainter.getPositionForOffset(localPosition);
+    // 스크롤 오프셋을 고려하여 Y 좌표 조정
+    final adjustedPosition = Offset(localPosition.dx, localPosition.dy + scrollOffset);
+    final offset = textPainter.getPositionForOffset(adjustedPosition);
     final textOffset = offset.offset;
 
     // 단어의 시작 위치 찾기
@@ -603,7 +800,25 @@ class _MyHomePageState extends State<MyHomePage> {
       if (docSnapshot.exists) {
         final data = docSnapshot.data();
         if (mounted && data != null) {
-          WordDetailDialog.show(context, data, sentence, word);
+          // 사용할 단어 키 결정 (원형 우선, 없으면 원래 단어)
+          final wordKey = baseForm.isNotEmpty ? baseForm : word.toLowerCase();
+          WordDetailDialog.show(
+            context,
+            data,
+            sentence,
+            word,
+            wordKey,
+            onMeaningSelected: (selectedWord, meaning) {
+              if (mounted) {
+                setState(() {
+                  _selectedWordMeanings.add({
+                    'word': wordKey, // 원형으로 저장
+                    'meaning': meaning,
+                  });
+                });
+              }
+            },
+          );
         }
       } else {
         if (mounted) {
@@ -618,6 +833,28 @@ class _MyHomePageState extends State<MyHomePage> {
           SnackBar(content: Text('검색 중 오류가 발생했습니다: $e')),
         );
       }
+    }
+  }
+
+  void _removeSelectedWord(int index) {
+    setState(() {
+      _selectedWordMeanings.removeAt(index);
+    });
+  }
+
+  Future<void> _showAddToFlashcardDialog() async {
+    if (_selectedWordMeanings.isEmpty) return;
+
+    final result = await AddToFlashcardDialog.show(
+      context,
+      _selectedWordMeanings,
+    );
+
+    // 저장 성공 시 선택된 단어 목록 초기화
+    if (result == true && mounted) {
+      setState(() {
+        _selectedWordMeanings.clear();
+      });
     }
   }
 
