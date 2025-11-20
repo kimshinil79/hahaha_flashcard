@@ -16,6 +16,9 @@ import 'widgets/add_to_flashcard_dialog.dart';
 import 'widgets/flashcard_study_screen.dart';
 import 'widgets/study_calendar_widget.dart';
 import 'dart:convert';
+import 'dart:async';
+import 'dart:io';
+import 'package:receive_sharing_intent/receive_sharing_intent.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -160,6 +163,7 @@ class _MyHomePageState extends State<MyHomePage> {
   List<Map<String, dynamic>> _studyFlashcards = [];
   bool _isLoadingFlashcards = false;
   int _calendarRefreshKey = 0;
+  StreamSubscription? _intentDataStreamSubscription;
   static const Map<String, Duration> _difficultyIntervals = {
     'easy': Duration(days: 5),
     'normal': Duration(days: 3),
@@ -184,6 +188,72 @@ class _MyHomePageState extends State<MyHomePage> {
     _loadIrregularWords();
     _printCurrentUserDocumentId();
     _loadStudyFlashcards();
+    _listenToSharedImages();
+  }
+
+  void _listenToSharedImages() {
+    // 공유된 이미지를 받는 스트림 구독
+    _intentDataStreamSubscription = ReceiveSharingIntent.instance.getMediaStream()
+        .listen((List<SharedMediaFile> value) {
+      if (value.isNotEmpty && value[0].path.isNotEmpty) {
+        _handleSharedImage(value[0].path);
+      }
+    }, onError: (err) {
+      print("getIntentDataStream error: $err");
+    });
+
+    // 앱 시작 시 이미 공유된 이미지가 있는지 확인
+    ReceiveSharingIntent.instance.getInitialMedia().then((List<SharedMediaFile> value) {
+      if (value.isNotEmpty && value[0].path.isNotEmpty) {
+        _handleSharedImage(value[0].path);
+      }
+    });
+  }
+
+  Future<void> _handleSharedImage(String imagePath) async {
+    try {
+      final file = File(imagePath);
+      if (!await file.exists()) {
+        print('공유된 이미지 파일이 존재하지 않습니다: $imagePath');
+        return;
+      }
+
+      // 공유된 이미지를 바로 크롭 화면으로 전달
+      if (!mounted) return;
+
+      final cropResult = await Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (context) => CameraViewPage(imagePath: imagePath),
+        ),
+      );
+
+      // await 후 mounted 체크
+      if (!mounted) return;
+
+      if (cropResult is Map<String, dynamic>) {
+        final extractedText = cropResult['text'] as String?;
+
+        setState(() {
+          if (extractedText != null && extractedText.trim().isNotEmpty) {
+            _recognizedText = extractedText.trim();
+          }
+        });
+      }
+    } catch (e) {
+      print('공유된 이미지 처리 중 오류: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('이미지 처리 중 오류가 발생했습니다: $e')),
+        );
+      }
+    }
+  }
+
+  @override
+  void dispose() {
+    _intentDataStreamSubscription?.cancel();
+    super.dispose();
   }
 
   Future<void> _loadStudyFlashcards() async {
@@ -365,7 +435,11 @@ class _MyHomePageState extends State<MyHomePage> {
     return Scaffold(
       backgroundColor: const Color(0xFFF8FAFC),
       appBar: AppBar(
-        title: Text(widget.title),
+        title: Image.asset(
+          'assets/HaHaHa.png',
+          height: 40,
+          fit: BoxFit.contain,
+        ),
         actions: [
           IconButton(
             icon: const Icon(Icons.search),
@@ -421,18 +495,11 @@ class _MyHomePageState extends State<MyHomePage> {
                             child: Container(
                               padding: const EdgeInsets.all(24),
                               decoration: BoxDecoration(
-                                gradient: const LinearGradient(
-                                  begin: Alignment.topLeft,
-                                  end: Alignment.bottomRight,
-                                  colors: [
-                                    Color(0xFF6366F1),
-                                    Color(0xFF8B5CF6),
-                                  ],
-                                ),
+                                color: Colors.white,
                                 borderRadius: BorderRadius.circular(16),
                                 boxShadow: [
                                   BoxShadow(
-                                    color: const Color(0xFF6366F1).withOpacity(0.3),
+                                    color: Colors.grey.withOpacity(0.2),
                                     blurRadius: 12,
                                     offset: const Offset(0, 4),
                                   ),
@@ -442,7 +509,7 @@ class _MyHomePageState extends State<MyHomePage> {
                                 children: [
                                   const Icon(
                                     Icons.school,
-                                    color: Colors.white,
+                                    color: Color(0xFF6366F1),
                                     size: 32,
                                   ),
                                   const SizedBox(width: 16),
@@ -453,7 +520,7 @@ class _MyHomePageState extends State<MyHomePage> {
                                         const Text(
                                           '공부 시작',
                                           style: TextStyle(
-                                            color: Colors.white,
+                                            color: Color(0xFF6366F1),
                                             fontSize: 20,
                                             fontWeight: FontWeight.w700,
                                           ),
@@ -464,7 +531,7 @@ class _MyHomePageState extends State<MyHomePage> {
                                               ? '로딩 중...'
                                               : '${_studyFlashcards.length}개의 단어가 준비되어 있어요',
                                           style: TextStyle(
-                                            color: Colors.white.withOpacity(0.9),
+                                            color: Colors.grey.shade600,
                                             fontSize: 14,
                                           ),
                                         ),
@@ -473,7 +540,7 @@ class _MyHomePageState extends State<MyHomePage> {
                                   ),
                                   Icon(
                                     Icons.arrow_forward_ios,
-                                    color: Colors.white.withOpacity(0.8),
+                                    color: const Color(0xFF6366F1).withOpacity(0.8),
                                     size: 20,
                                   ),
                                 ],
@@ -633,6 +700,13 @@ class _MyHomePageState extends State<MyHomePage> {
           _isConsonant(beforeEd[beforeEd.length - 1]) &&
           beforeEd[beforeEd.length - 1] == beforeEd[beforeEd.length - 2]) {
         return beforeEd.substring(0, beforeEd.length - 1);
+      }
+      // graced -> grace, noticed -> notice, experienced -> experience
+      // 'c'로 끝나는 경우 대부분 원형이 'ce'로 끝나므로 'e'를 추가
+      if (beforeEd.endsWith('c')) {
+        // 'e'를 추가하여 원형 복원 시도 (예: grac -> grace, notic -> notice)
+        final withE = beforeEd + 'e';
+        return withE;
       }
       return beforeEd;
     }

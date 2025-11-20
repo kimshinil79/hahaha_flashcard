@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'group_selection_dialog.dart';
 
 enum StudyContinuationOption {
   lowFrequency,
@@ -189,72 +190,111 @@ class _FlashcardStudyScreenState extends State<FlashcardStudyScreen>
   Future<void> _showNextStudyOptions() async {
     if (!mounted) return;
 
-    final option = await showModalBottomSheet<StudyContinuationOption>(
+    final result = await showDialog<dynamic>(
       context: context,
-      isScrollControlled: true,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
-      ),
       builder: (context) {
-        return Padding(
-          padding: EdgeInsets.only(
-            left: 20,
-            right: 20,
-            top: 24,
-            bottom: 24 + MediaQuery.of(context).viewInsets.bottom,
+        return Dialog(
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(24),
           ),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              const Text(
-                '공부 must go on....',
-                textAlign: TextAlign.center,
-                style: TextStyle(
-                  fontSize: 18,
-                  fontWeight: FontWeight.w700,
-                  color: Color(0xFF1F1F39),
+          child: ConstrainedBox(
+            constraints: BoxConstraints(
+              maxWidth: MediaQuery.of(context).size.width * 0.9,
+            ),
+            child: Padding(
+              padding: const EdgeInsets.all(24),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                const Text(
+                  '공부 must go on....',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.w700,
+                    color: Color(0xFF1F1F39),
+                  ),
                 ),
-              ),
-              const SizedBox(height: 20),
-              _buildNextStudyButton(
-                icon: Icons.visibility,
-                color: const Color(0xFF4ADE80),
-                title: '공부 빈도 낮은 단어',
-                description: 'viewCount가 가장 낮은 10개의 단어',
-                option: StudyContinuationOption.lowFrequency,
-              ),
-              const SizedBox(height: 12),
-              _buildNextStudyButton(
-                icon: Icons.bolt,
-                color: const Color(0xFFFB7185),
-                title: '어려운 단어',
-                description: '난이도가 어려움으로 표시된 단어',
-                option: StudyContinuationOption.hardWords,
-              ),
-              const SizedBox(height: 12),
-              _buildNextStudyButton(
-                icon: Icons.layers,
-                color: const Color(0xFF6366F1),
-                title: '1번과 2번 믹스',
-                description: '빈도 낮은 단어와 어려운 단어를 조합',
-                option: StudyContinuationOption.mix,
-              ),
-              const SizedBox(height: 12),
-              _buildNextStudyButton(
-                icon: Icons.home,
-                color: Colors.grey.shade500,
-                title: 'main 화면으로 가기',
-                description: '홈 화면으로 돌아갑니다',
-                option: StudyContinuationOption.goHome,
-              ),
-            ],
+                const SizedBox(height: 20),
+                _buildNextStudyButton(
+                  icon: Icons.visibility,
+                  color: const Color(0xFF4ADE80),
+                  title: '공부 빈도 낮은 단어',
+                  description: 'viewCount가 가장 낮은 10개의 단어',
+                  option: StudyContinuationOption.lowFrequency,
+                ),
+                const SizedBox(height: 12),
+                _buildNextStudyButton(
+                  icon: Icons.bolt,
+                  color: const Color(0xFFFB7185),
+                  title: '어려운 단어',
+                  description: '난이도가 어려움으로 표시된 단어',
+                  option: StudyContinuationOption.hardWords,
+                ),
+                const SizedBox(height: 12),
+                _buildNextStudyButton(
+                  icon: Icons.layers,
+                  color: const Color(0xFF6366F1),
+                  title: '1번과 2번 믹스',
+                  description: '빈도 낮은 단어와 어려운 단어를 조합',
+                  option: StudyContinuationOption.mix,
+                ),
+                const SizedBox(height: 12),
+                _buildGroupWordsButton(),
+                const SizedBox(height: 12),
+                _buildNextStudyButton(
+                  icon: Icons.home,
+                  color: Colors.grey.shade500,
+                  title: 'main 화면으로 가기',
+                  description: '홈 화면으로 돌아갑니다',
+                  option: StudyContinuationOption.goHome,
+                ),
+              ],
+            ),
+            ),
           ),
         );
       },
     );
 
     if (!mounted) return;
+
+    // 그룹 선택 케이스 처리
+    if (result == 'groupSelection') {
+      // 그룹 선택 다이얼로그 표시
+      final selectedGroupId = await GroupSelectionDialog.show(context);
+      
+      if (!mounted) return;
+
+      // 그룹 선택 취소 시 옵션 메뉴로 다시 돌아감
+      if (selectedGroupId == null) {
+        await _showNextStudyOptions();
+        return;
+      }
+
+      // 선택된 그룹의 단어들 로드
+      final newFlashcards = await _loadFlashcardsByGroup(selectedGroupId);
+      
+      if (!mounted) return;
+
+      // 선택한 그룹에 단어가 없으면 옵션 메뉴로 다시 돌아감
+      if (newFlashcards.isEmpty) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('해당 그룹에 단어가 없습니다. 다른 옵션을 선택해주세요.')),
+          );
+        }
+        await _showNextStudyOptions();
+        return;
+      }
+
+      await _resetForNewSession(newFlashcards);
+      return;
+    }
+
+    // 기존 옵션 처리
+    final option = result as StudyContinuationOption?;
 
     if (option == null || option == StudyContinuationOption.goHome) {
       Navigator.of(context).pop(true);
@@ -331,6 +371,99 @@ class _FlashcardStudyScreenState extends State<FlashcardStudyScreen>
         ],
       ),
     );
+  }
+
+  Widget _buildGroupWordsButton() {
+    return ElevatedButton(
+      onPressed: () {
+        // 다이얼로그를 닫고 특별한 값 반환 (그룹 선택 플래그)
+        Navigator.of(context).pop('groupSelection');
+      },
+      style: ElevatedButton.styleFrom(
+        backgroundColor: Colors.white,
+        foregroundColor: Colors.black,
+        elevation: 0,
+        padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 12),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(14),
+          side: BorderSide(
+            color: const Color(0xFFF59E0B).withOpacity(0.4),
+          ),
+        ),
+      ),
+      child: Row(
+        children: [
+          Container(
+            padding: const EdgeInsets.all(10),
+            decoration: BoxDecoration(
+              color: const Color(0xFFF59E0B).withOpacity(0.15),
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: const Icon(Icons.folder, color: Color(0xFFF59E0B)),
+          ),
+          const SizedBox(width: 16),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  '그룹별 단어',
+                  style: TextStyle(
+                    fontSize: 15,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  '그룹을 선택하여 해당 그룹의 단어 학습',
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: Colors.grey.shade600,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const Icon(Icons.arrow_forward_ios, size: 16, color: Color(0xFFB8B6C4)),
+        ],
+      ),
+    );
+  }
+
+  Future<List<Map<String, dynamic>>> _loadFlashcardsByGroup(String groupId) async {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) return [];
+
+    try {
+      final userDoc = await _firestore.collection('users').doc(user.uid).get();
+      if (!userDoc.exists) return [];
+
+      final userData = userDoc.data() ?? {};
+      final allFlashcards = (userData['flashcards'] as List<dynamic>? ?? [])
+          .map((f) => Map<String, dynamic>.from(f as Map<String, dynamic>))
+          .toList();
+
+      if (allFlashcards.isEmpty) return [];
+
+      // 선택된 그룹 ID가 포함된 단어들 필터링
+      final groupFlashcards = allFlashcards.where((card) {
+        final groups = card['groups'] as List<dynamic>? ?? [];
+        return groups.contains(groupId);
+      }).toList();
+
+      // viewCount 순으로 정렬
+      groupFlashcards.sort((a, b) {
+        final viewCountA = a['viewCount'] as int? ?? 0;
+        final viewCountB = b['viewCount'] as int? ?? 0;
+        return viewCountA.compareTo(viewCountB);
+      });
+
+      // 최대 10개까지만 반환
+      return groupFlashcards.take(10).map((c) => Map<String, dynamic>.from(c)).toList();
+    } catch (e) {
+      print('그룹별 단어 로드 실패: $e');
+      return [];
+    }
   }
 
   Widget _buildDifficultySelector() {
@@ -432,6 +565,254 @@ class _FlashcardStudyScreenState extends State<FlashcardStudyScreen>
       }
     } catch (e) {
       print('viewCount 업데이트 실패: $e');
+    }
+  }
+
+  Future<void> _showEditDialog(String word, Map<String, dynamic> meaning) async {
+    final wordController = TextEditingController(text: word);
+    final definitionController = TextEditingController(
+      text: meaning['definition'] is String 
+          ? meaning['definition'] 
+          : (meaning['definition'] is List && (meaning['definition'] as List).isNotEmpty)
+              ? (meaning['definition'] as List).join('\n')
+              : '',
+    );
+    
+    // 예문을 리스트로 변환
+    List<String> examples = [];
+    if (meaning['examples'] != null) {
+      if (meaning['examples'] is List) {
+        examples = (meaning['examples'] as List).map((e) => e.toString()).toList();
+      } else if (meaning['examples'] is String) {
+        examples = [meaning['examples']];
+      }
+    }
+    
+    final exampleControllers = examples.map((e) => TextEditingController(text: e)).toList();
+    
+    if (!mounted) return;
+    
+    await showDialog(
+      context: context,
+      builder: (context) {
+        return StatefulBuilder(
+          builder: (context, setDialogState) {
+            return WillPopScope(
+              onWillPop: () async {
+                // 다이얼로그가 닫힐 때 컨트롤러 정리
+                wordController.dispose();
+                definitionController.dispose();
+                for (var controller in exampleControllers) {
+                  controller.dispose();
+                }
+                return true;
+              },
+              child: AlertDialog(
+              title: const Text('단어 수정'),
+              content: SingleChildScrollView(
+                child: SizedBox(
+                  width: MediaQuery.of(context).size.width * 0.8,
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      // 단어 스펠링
+                      TextField(
+                        controller: wordController,
+                        decoration: const InputDecoration(
+                          labelText: '단어',
+                          border: OutlineInputBorder(),
+                        ),
+                      ),
+                      const SizedBox(height: 16),
+                      // 정의
+                      TextField(
+                        controller: definitionController,
+                        decoration: const InputDecoration(
+                          labelText: '정의',
+                          border: OutlineInputBorder(),
+                        ),
+                        maxLines: 3,
+                      ),
+                      const SizedBox(height: 16),
+                      // 예문
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          const Text(
+                            '예문',
+                            style: TextStyle(
+                              fontSize: 16,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                          IconButton(
+                            icon: const Icon(Icons.add_circle_outline),
+                            onPressed: () {
+                              setDialogState(() {
+                                exampleControllers.add(TextEditingController());
+                              });
+                            },
+                          ),
+                        ],
+                      ),
+                      ...exampleControllers.asMap().entries.map((entry) {
+                        final index = entry.key;
+                        final controller = entry.value;
+                        return Padding(
+                          padding: const EdgeInsets.only(bottom: 8),
+                          child: Row(
+                            children: [
+                              Expanded(
+                                child: TextField(
+                                  controller: controller,
+                                  decoration: InputDecoration(
+                                    labelText: '예문 ${index + 1}',
+                                    border: const OutlineInputBorder(),
+                                  ),
+                                ),
+                              ),
+                              IconButton(
+                                icon: const Icon(Icons.delete_outline),
+                                onPressed: () {
+                                  setDialogState(() {
+                                    controller.dispose();
+                                    exampleControllers.removeAt(index);
+                                  });
+                                },
+                              ),
+                            ],
+                          ),
+                        );
+                      }),
+                    ],
+                  ),
+                ),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () {
+                    // WillPopScope가 컨트롤러를 정리하므로 Navigator.pop만 호출
+                    Navigator.of(context).pop();
+                  },
+                  child: const Text('취소'),
+                ),
+                ElevatedButton(
+                  onPressed: () async {
+                    final newWord = wordController.text.trim();
+                    final newDefinition = definitionController.text.trim();
+                    final newExamples = exampleControllers
+                        .map((c) => c.text.trim())
+                        .where((e) => e.isNotEmpty)
+                        .toList();
+                    
+                    if (newWord.isEmpty || newDefinition.isEmpty) {
+                      if (mounted) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(content: Text('단어와 정의는 필수입니다.')),
+                        );
+                      }
+                      // 검증 실패 시 다이얼로그는 열려있으므로 컨트롤러는 유지
+                      // WillPopScope가 다이얼로그가 닫힐 때 dispose 처리
+                      return;
+                    }
+                    
+                    await _updateFlashcard(word, newWord, newDefinition, newExamples);
+                    
+                    if (mounted) {
+                      // WillPopScope가 컨트롤러를 정리하므로 Navigator.pop만 호출
+                      Navigator.of(context).pop();
+                    }
+                  },
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: const Color(0xFF6366F1),
+                    foregroundColor: Colors.white,
+                  ),
+                  child: const Text('저장'),
+                ),
+              ],
+            ),
+            );
+          },
+        );
+      },
+    );
+  }
+
+  Future<void> _updateFlashcard(
+    String oldWord,
+    String newWord,
+    String newDefinition,
+    List<String> newExamples,
+  ) async {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) return;
+
+    try {
+      final userDocRef = _firestore.collection('users').doc(user.uid);
+      final userDoc = await userDocRef.get();
+
+      if (!userDoc.exists) return;
+
+      final userData = userDoc.data() ?? {};
+      final flashcards = (userData['flashcards'] as List<dynamic>? ?? [])
+          .map((f) => Map<String, dynamic>.from(f as Map<String, dynamic>))
+          .toList();
+
+      // 현재 단어 찾기
+      final cardIndex = flashcards.indexWhere((card) => card['word'] == oldWord);
+      if (cardIndex == -1) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('단어를 찾을 수 없습니다.')),
+          );
+        }
+        return;
+      }
+
+      // 단어 업데이트
+      final updatedMeaning = {
+        'definition': newDefinition,
+        if (newExamples.isNotEmpty) 'examples': newExamples,
+      };
+
+      flashcards[cardIndex]['word'] = newWord;
+      flashcards[cardIndex]['meaning'] = updatedMeaning;
+      flashcards[cardIndex]['updatedAt'] = Timestamp.fromDate(DateTime.now());
+
+      // Firestore 업데이트
+      await userDocRef.set({
+        'flashcards': flashcards,
+      }, SetOptions(merge: true));
+
+      // 로컬 상태 업데이트
+      if (mounted) {
+        setState(() {
+          final localIndex = _flashcards.indexWhere((c) => c['word'] == oldWord);
+          if (localIndex != -1) {
+            _flashcards[localIndex]['word'] = newWord;
+            _flashcards[localIndex]['meaning'] = updatedMeaning;
+            
+            // 별 카운트도 새 단어로 업데이트
+            if (_starCounts.containsKey(oldWord)) {
+              final starCount = _starCounts[oldWord] ?? 0;
+              _starCounts.remove(oldWord);
+              _starCounts[newWord] = starCount;
+            }
+          }
+        });
+
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('단어가 수정되었습니다.')),
+        );
+      }
+    } catch (e) {
+      print('단어 수정 실패: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('단어 수정 실패: $e')),
+        );
+      }
     }
   }
 
@@ -609,50 +990,65 @@ class _FlashcardStudyScreenState extends State<FlashcardStudyScreen>
   }
 
   void _addStar() {
+    // 현재 카드가 유효한지 확인
+    if (_currentIndex >= _flashcards.length || _flashcards.isEmpty) {
+      return;
+    }
+
     final currentFlashcard = _flashcards[_currentIndex];
     final word = currentFlashcard['word'] as String;
     final currentStars = _starCounts[word] ?? 0;
 
-    if (currentStars < 2) {
-      setState(() {
-        _starCounts[word] = currentStars + 1;
+    // 이미 별 2개를 받았으면 아무것도 하지 않음
+    if (currentStars >= 2) {
+      return;
+    }
+
+    // 별 추가 (최대 2개까지만)
+    final newStarCount = (currentStars + 1).clamp(0, 2);
+    
+    setState(() {
+      _starCounts[word] = newStarCount;
+    });
+
+    // 별 2개를 받은 카드는 목록에서 제거
+    if (newStarCount == 2) {
+      Future.delayed(const Duration(milliseconds: 500), () {
+        if (!mounted) return;
+        
+        // 카드가 아직 리스트에 있는지 확인
+        final cardIndex = _flashcards.indexWhere((c) => c['word'] == word);
+        if (cardIndex == -1) return; // 이미 제거됨
+
+        setState(() {
+          _flashcards.removeAt(cardIndex);
+          
+          // 인덱스 조정
+          if (_currentIndex >= _flashcards.length && _flashcards.isNotEmpty) {
+            _currentIndex = 0;
+          } else if (_currentIndex >= _flashcards.length || _flashcards.isEmpty) {
+            _currentIndex = 0;
+          }
+          
+          _isFlipped = false;
+          _flipController.reset();
+        });
+
+        // 모든 카드가 별 2개를 받았는지 확인
+        if (_flashcards.isEmpty) {
+          _onStudyComplete();
+        } else {
+          // 다음 카드로 이동 (끝이면 처음으로)
+          _nextWord();
+        }
       });
-
-      // 별 2개를 받은 카드는 목록에서 제거
-      if (_starCounts[word] == 2) {
-        Future.delayed(const Duration(milliseconds: 500), () {
-          if (mounted) {
-            setState(() {
-              _flashcards.removeAt(_currentIndex);
-              
-              // 인덱스 조정 (제거된 카드가 마지막이었으면 처음으로)
-              if (_currentIndex >= _flashcards.length && _flashcards.isNotEmpty) {
-                _currentIndex = 0;
-              } else if (_currentIndex >= _flashcards.length) {
-                _currentIndex = 0;
-              }
-              
-              _isFlipped = false;
-              _flipController.reset();
-            });
-
-            // 모든 카드가 별 2개를 받았는지 확인
-            if (_flashcards.isEmpty) {
-              _onStudyComplete();
-            } else {
-              // 다음 카드로 이동 (끝이면 처음으로)
-              _nextWord();
-            }
-          }
-        });
-      } else {
-        // 별 1개만 받았으면 0.5초 후 다음 카드로 이동 (끝이면 처음으로)
-        Future.delayed(const Duration(milliseconds: 500), () {
-          if (mounted) {
-            _nextWord();
-          }
-        });
-      }
+    } else {
+      // 별 1개만 받았으면 0.5초 후 다음 카드로 이동 (끝이면 처음으로)
+      Future.delayed(const Duration(milliseconds: 500), () {
+        if (mounted) {
+          _nextWord();
+        }
+      });
     }
   }
 
@@ -877,7 +1273,7 @@ class _FlashcardStudyScreenState extends State<FlashcardStudyScreen>
                 right: 16,
                 child: Row(
                   mainAxisSize: MainAxisSize.min,
-                  children: List.generate(starCount, (index) {
+                  children: List.generate(starCount.clamp(0, 2), (index) {
                     return const Padding(
                       padding: EdgeInsets.only(left: 4),
                       child: Icon(
@@ -971,7 +1367,7 @@ class _FlashcardStudyScreenState extends State<FlashcardStudyScreen>
                 right: 16,
                 child: Row(
                   mainAxisSize: MainAxisSize.min,
-                  children: List.generate(starCount, (index) {
+                  children: List.generate(starCount.clamp(0, 2), (index) {
                     return const Padding(
                       padding: EdgeInsets.only(left: 4),
                       child: Icon(
@@ -983,6 +1379,17 @@ class _FlashcardStudyScreenState extends State<FlashcardStudyScreen>
                   }),
                 ),
               ),
+            // 수정 버튼 (하단 우측)
+            Positioned(
+              bottom: 16,
+              right: 16,
+              child: FloatingActionButton(
+                mini: true,
+                onPressed: () => _showEditDialog(word, meaning),
+                backgroundColor: const Color(0xFF6366F1),
+                child: const Icon(Icons.edit, color: Colors.white, size: 20),
+              ),
+            ),
           ],
         );
       },
