@@ -342,13 +342,21 @@ class _MyHomePageState extends State<MyHomePage> {
       MaterialPageRoute(
         builder: (context) => FlashcardStudyScreen(
           flashcards: _studyFlashcards,
+          onStudyComplete: () {
+            // 공부 완료 시 즉시 달력 새로고침
+            if (mounted) {
+              setState(() {
+                _calendarRefreshKey++;
+              });
+            }
+          },
         ),
       ),
     ).then((result) {
       // 공부 화면에서 돌아오면 다시 로드
       _loadStudyFlashcards();
-      // 공부 완료 시 달력도 새로고침 (setState로 트리거)
-      if (result == true) {
+      // 추가로 달력 새로고침 (혹시 놓친 경우 대비)
+      if (result == true && mounted) {
         setState(() {
           _calendarRefreshKey++;
         });
@@ -980,11 +988,20 @@ class _MyHomePageState extends State<MyHomePage> {
       _selectedWordMeanings,
     );
 
-    // 저장 성공 시 선택된 단어 목록 초기화
+    // 저장 성공 시 선택된 단어 목록 초기화 및 성공 메시지 표시
     if (result == true && mounted) {
       setState(() {
         _selectedWordMeanings.clear();
       });
+      
+      // 성공 메시지 표시
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('단어장에 성공적으로 추가되었습니다.'),
+          backgroundColor: Colors.green,
+          duration: Duration(seconds: 2),
+        ),
+      );
     }
   }
 

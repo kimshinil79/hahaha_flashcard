@@ -16,6 +16,7 @@ class AddToFlashcardDialog extends StatefulWidget {
   ) {
     return showDialog<bool>(
       context: context,
+      barrierDismissible: true, // 배경 탭으로 닫기 가능
       builder: (context) => AddToFlashcardDialog(
         selectedWords: selectedWords,
       ),
@@ -599,15 +600,17 @@ class _AddToFlashcardDialogState extends State<AddToFlashcardDialog> {
         await _loadExistingGroups();
       }
 
-      if (mounted) {
-        Navigator.of(context).pop(true);
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('단어장에 성공적으로 추가되었습니다.'),
-            backgroundColor: Colors.green,
-          ),
-        );
-      }
+      if (!mounted) return;
+
+      if (!mounted) return;
+
+      // 상태 초기화
+      setState(() {
+        _isSaving = false;
+      });
+
+      // dialog 닫기 (성공 메시지는 main.dart에서 표시)
+      Navigator.of(context).pop(true);
     } catch (e) {
       if (mounted) {
         setState(() {
@@ -662,7 +665,7 @@ class _AddToFlashcardDialogState extends State<AddToFlashcardDialog> {
                   ),
                   IconButton(
                     icon: const Icon(Icons.close, size: 20),
-                    onPressed: () => Navigator.of(context).pop(),
+                    onPressed: _isSaving ? null : () => Navigator.of(context).pop(),
                     padding: EdgeInsets.zero,
                     constraints: const BoxConstraints(),
                   ),

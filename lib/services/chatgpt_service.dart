@@ -59,7 +59,7 @@ class ChatGPTService {
 1. JSON 형식만 반환하세요. 다른 설명이나 마크다운 코드 블록 없이 순수 JSON만 반환하세요.
 2. word는 정확히 "$word"로 반환하세요.
 3. pos는 영어 품사 배열입니다 (예: ["noun"], ["verb", "noun"]).
-4. meanings 배열에 각 의미를 포함하세요. 의미가 여러 개면 여러 개를 추가하세요.
+4. meanings 배열에는 단어의 주요 의미를 2개에서 5개 사이로 포함하세요. 가장 자주 사용되고 중요한 의미를 우선적으로 포함해주세요. 의미가 많더라도 5개를 초과하지 마세요.
 5. 각 meaning의 id는 "${word.toLowerCase()}_1", "${word.toLowerCase()}_2" 형식입니다.
 6. definition은 "[품사] 한국어 정의" 형식입니다 (예: "[명사] 확신, 자신감").
 7. examples는 영문 예문과 한국어 번역을 포함한 문자열 배열입니다 (예: "She spoke with assurance. (그녀는 자신 있게 말했다.)").

@@ -114,78 +114,182 @@ class _RecognizedTextDisplayState extends State<RecognizedTextDisplay> {
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.all(20),
+      margin: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: Colors.grey.shade200.withOpacity(0.5)),
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [
+            Colors.white,
+            const Color(0xFF6366F1).withOpacity(0.02),
+          ],
+        ),
+        borderRadius: BorderRadius.circular(24),
+        border: Border.all(
+          color: const Color(0xFF6366F1).withOpacity(0.1),
+          width: 1.5,
+        ),
         boxShadow: [
           BoxShadow(
-            color: Colors.grey.shade100,
-            blurRadius: 8,
-            offset: const Offset(0, 2),
+            color: const Color(0xFF6366F1).withOpacity(0.08),
+            blurRadius: 20,
+            offset: const Offset(0, 8),
+            spreadRadius: 0,
+          ),
+          BoxShadow(
+            color: Colors.black.withOpacity(0.04),
+            blurRadius: 12,
+            offset: const Offset(0, 4),
+            spreadRadius: 0,
           ),
         ],
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // 글씨 크기 조절 버튼 (고정 위치)
-          Row(
-            children: [
-              IconButton(
-                icon: const Icon(Icons.close),
-                tooltip: '닫기',
-                onPressed: widget.onClose,
-                color: Colors.grey.shade600,
+          // 상단 헤더 영역
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+            decoration: BoxDecoration(
+              color: Colors.white.withOpacity(0.5),
+              borderRadius: const BorderRadius.only(
+                topLeft: Radius.circular(24),
+                topRight: Radius.circular(24),
               ),
-              const Spacer(),
-              Container(
-                decoration: BoxDecoration(
-                  color: Colors.grey.shade50,
-                  borderRadius: BorderRadius.circular(8),
-                  border: Border.all(color: Colors.grey.shade200),
+            ),
+            child: Row(
+              children: [
+                // 닫기 버튼
+                Container(
+                  decoration: BoxDecoration(
+                    color: Colors.grey.shade100,
+                    shape: BoxShape.circle,
+                  ),
+                  child: IconButton(
+                    icon: const Icon(Icons.close, size: 20),
+                    tooltip: '닫기',
+                    onPressed: widget.onClose,
+                    color: Colors.grey.shade700,
+                    padding: const EdgeInsets.all(8),
+                    constraints: const BoxConstraints(),
+                  ),
                 ),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    IconButton(
-                      icon: const Icon(Icons.remove, size: 18),
-                      onPressed: _decreaseFontSize,
-                      padding: const EdgeInsets.all(8),
-                      constraints: const BoxConstraints(),
-                      color: Colors.grey.shade700,
-                    ),
-                    Container(
-                      width: 1,
-                      height: 24,
-                      color: Colors.grey.shade300,
-                    ),
-                    IconButton(
-                      icon: const Icon(Icons.add, size: 18),
-                      onPressed: _increaseFontSize,
-                      padding: const EdgeInsets.all(8),
-                      constraints: const BoxConstraints(),
-                      color: Colors.grey.shade700,
-                    ),
-                  ],
+                const SizedBox(width: 12),
+                // 제목
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        '인식된 텍스트',
+                        style: TextStyle(
+                          fontSize: 14,
+                          fontWeight: FontWeight.w600,
+                          color: Colors.grey.shade600,
+                          letterSpacing: -0.2,
+                        ),
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        '단어를 길게 눌러 선택하세요',
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: Colors.grey.shade500,
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
-              ),
-            ],
+                // 폰트 크기 조절 버튼
+                Container(
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(
+                      colors: [
+                        const Color(0xFF6366F1).withOpacity(0.1),
+                        const Color(0xFF8B5CF6).withOpacity(0.1),
+                      ],
+                    ),
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(
+                      color: const Color(0xFF6366F1).withOpacity(0.2),
+                    ),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      IconButton(
+                        icon: const Icon(Icons.remove, size: 18),
+                        onPressed: _decreaseFontSize,
+                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                        constraints: const BoxConstraints(),
+                        color: const Color(0xFF6366F1),
+                        tooltip: '폰트 크기 줄이기',
+                      ),
+                      Container(
+                        width: 1,
+                        height: 20,
+                        color: const Color(0xFF6366F1).withOpacity(0.2),
+                      ),
+                      Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 12),
+                        child: Text(
+                          '${_fontSize.toInt()}',
+                          style: TextStyle(
+                            fontSize: 12,
+                            fontWeight: FontWeight.w600,
+                            color: const Color(0xFF6366F1),
+                          ),
+                        ),
+                      ),
+                      Container(
+                        width: 1,
+                        height: 20,
+                        color: const Color(0xFF6366F1).withOpacity(0.2),
+                      ),
+                      IconButton(
+                        icon: const Icon(Icons.add, size: 18),
+                        onPressed: _increaseFontSize,
+                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                        constraints: const BoxConstraints(),
+                        color: const Color(0xFF6366F1),
+                        tooltip: '폰트 크기 키우기',
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
           ),
-          const SizedBox(height: 16),
-          // 스크롤 가능한 본문 (나머지 공간 모두 사용)
+          // 구분선
+          Container(
+            height: 1,
+            margin: const EdgeInsets.symmetric(horizontal: 20),
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                colors: [
+                  Colors.transparent,
+                  const Color(0xFF6366F1).withOpacity(0.1),
+                  Colors.transparent,
+                ],
+              ),
+            ),
+          ),
+          // 스크롤 가능한 본문
           Expanded(
             child: SingleChildScrollView(
               controller: _scrollController,
+              padding: const EdgeInsets.all(24),
               child: SelectableText.rich(
                 TextSpan(
                   text: widget.recognizedText,
-                  style: Theme.of(context).textTheme.bodyLarge?.copyWith(
-                        height: 1.6,
-                        fontSize: _fontSize,
-                        color: Colors.grey.shade800,
-                      ),
+                  style: TextStyle(
+                    fontSize: _fontSize,
+                    height: 1.8, // 줄 간격 증가
+                    letterSpacing: 0.3, // 자간
+                    wordSpacing: 1.5, // 단어 간격
+                    color: const Color(0xFF1E293B),
+                    fontWeight: FontWeight.w400,
+                  ),
                 ),
                 textAlign: TextAlign.justify,
                 textDirection: TextDirection.ltr,

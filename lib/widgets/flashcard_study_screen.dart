@@ -12,10 +12,12 @@ enum StudyContinuationOption {
 
 class FlashcardStudyScreen extends StatefulWidget {
   final List<Map<String, dynamic>> flashcards;
+  final VoidCallback? onStudyComplete; // 공부 완료 콜백 추가
 
   const FlashcardStudyScreen({
     super.key,
     required this.flashcards,
+    this.onStudyComplete,
   });
 
   @override
@@ -1106,6 +1108,11 @@ class _FlashcardStudyScreenState extends State<FlashcardStudyScreen>
 
     // 모든 단어의 viewCount 업데이트
     await _updateAllViewCounts();
+
+    // Firestore 업데이트 완료 후 콜백 호출 (달력 새로고침용)
+    if (mounted && widget.onStudyComplete != null) {
+      widget.onStudyComplete!();
+    }
 
     if (!mounted) return;
 
