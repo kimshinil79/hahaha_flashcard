@@ -29,31 +29,6 @@ class CalendarGridWidget extends StatelessWidget {
     ) ?? Colors.transparent;
   }
 
-  Color _getCountTextColor(int count, Color backgroundColor) {
-    if (count == 0) return Colors.grey.shade600;
-    final intensity = _getIntensity(count);
-    final baseColor = Color.lerp(
-      const Color(0xFF1F1F39),
-      Colors.white,
-      intensity,
-    ) ?? Colors.white;
-
-    if (backgroundColor == Colors.transparent) {
-      return baseColor.withOpacity(0.8);
-    }
-
-    final luminance = backgroundColor.computeLuminance();
-    if (luminance < 0.2) {
-      return baseColor.withOpacity(0.95);
-    } else if (luminance < 0.4) {
-      return baseColor.withOpacity(0.85);
-    } else if (luminance < 0.6) {
-      return baseColor.withOpacity(0.75);
-    } else {
-      return const Color(0xFF1F1F39).withOpacity(0.8);
-    }
-  }
-
   Color _getDayTextColor(bool isSelected, bool isToday, int count, Color backgroundColor) {
     if (isSelected) {
       if (count == 0 || backgroundColor == Colors.transparent) {
@@ -95,8 +70,9 @@ class CalendarGridWidget extends StatelessWidget {
     final isSelected = _isSelected(date);
     final count = studyCounts[dateStr] ?? 0;
     final backgroundColor = _getDateBackgroundColor(count);
-    final countColor = _getCountTextColor(count, backgroundColor);
     final dayColor = _getDayTextColor(isSelected, isToday, count, backgroundColor);
+    // 공부 횟수 숫자도 날짜와 같은 색상 로직 사용
+    final countColor = dayColor;
 
     // 테두리 색상 결정
     Color? borderColor;
@@ -140,9 +116,7 @@ class CalendarGridWidget extends StatelessWidget {
                 '$count',
                 style: TextStyle(
                   fontSize: 10,
-                  color: isSelected
-                      ? countColor.withOpacity(0.9)
-                      : countColor,
+                  color: countColor,
                 ),
               ),
           ],

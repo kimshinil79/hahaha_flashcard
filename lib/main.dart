@@ -15,13 +15,20 @@ import 'widgets/selected_word_list.dart';
 import 'widgets/add_to_flashcard_dialog.dart';
 import 'widgets/flashcard_study_screen.dart';
 import 'widgets/study_calendar_widget.dart';
+import 'widgets/word_addition_chart.dart';
+import 'services/chatgpt_service.dart';
 import 'dart:convert';
 import 'dart:async';
 import 'dart:io';
 import 'package:receive_sharing_intent/receive_sharing_intent.dart';
+import 'package:flutter_dotenv/flutter_dotenv.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  
+  // .env 파일 로드
+  await dotenv.load(fileName: ".env");
+  
   await Firebase.initializeApp(
     options: DefaultFirebaseOptions.currentPlatform,
   );
@@ -489,7 +496,7 @@ class _MyHomePageState extends State<MyHomePage> {
                       children: <Widget>[
                         if (_recognizedText == null ||
                             _recognizedText!.isEmpty) ...[
-                          // 공부 시작 카드 (텍스트 추출 전/없을 때만 표시)
+                          // 공부 시작 카드 (고정, 텍스트 추출 전/없을 때만 표시)
                           GestureDetector(
                             onTap: _startStudy,
                             child: Container(
@@ -548,12 +555,24 @@ class _MyHomePageState extends State<MyHomePage> {
                             ),
                           ),
                           const SizedBox(height: 20),
-                          // 달력 위젯 (텍스트 미표시 시에만 노출)
-                          StudyCalendarWidget(
-                            key: ValueKey(_calendarRefreshKey),
-                            refreshTrigger: _calendarRefreshKey,
+                          // 스크롤 가능한 영역 (달력 + 그래프)
+                          Expanded(
+                            child: SingleChildScrollView(
+                              child: Column(
+                                children: [
+                                  // 달력 위젯
+                                  StudyCalendarWidget(
+                                    key: ValueKey(_calendarRefreshKey),
+                                    refreshTrigger: _calendarRefreshKey,
+                                  ),
+                                  const SizedBox(height: 20),
+                                  // 단어 추가 그래프
+                                  const WordAdditionChart(),
+                                  const SizedBox(height: 20),
+                                ],
+                              ),
+                            ),
                           ),
-                          const SizedBox(height: 20),
                         ],
                         if (_selectedWordMeanings.isNotEmpty) ...[
                           SelectedWordList(
@@ -572,9 +591,6 @@ class _MyHomePageState extends State<MyHomePage> {
                               onClose: _clearRecognizedText,
                             ),
                           ),
-                        ],
-                        if (_recognizedText == null) ...[
-                          const Expanded(child: SizedBox.shrink()),
                         ],
                       ],
                     ),
@@ -854,10 +870,9 @@ class _MyHomePageState extends State<MyHomePage> {
           );
         }
       } else {
+        // 단어를 찾지 못하면 ChatGPT API 호출
         if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text('"$word" 단어를 찾을 수 없습니다.')),
-          );
+          _fetchWordFromChatGPT(word, sentence, baseForm);
         }
       }
     } catch (e) {
@@ -866,6 +881,88 @@ class _MyHomePageState extends State<MyHomePage> {
           SnackBar(content: Text('검색 중 오류가 발생했습니다: $e')),
         );
       }
+    }
+  }
+
+  /// ChatGPT API를 호출하여 단어 정보를 가져오고 Firebase에 저장한 후 표시합니다.
+  Future<void> _fetchWordFromChatGPT(String word, String sentence, String baseForm) async {
+    // 로딩 다이얼로그 표시
+    if (!mounted) return;
+    
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => const Center(
+        child: Card(
+          child: Padding(
+            padding: EdgeInsets.all(20),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                CircularProgressIndicator(),
+                SizedBox(height: 16),
+                Text('단어 정보를 불러오는 중...'),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+
+    try {
+      // ChatGPT API 호출
+      final wordData = await ChatGPTService.getWordInfo(word);
+      
+      if (!mounted) return;
+      
+      if (wordData == null) {
+        Navigator.of(context).pop(); // 로딩 다이얼로그 닫기
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('단어 정보를 가져올 수 없습니다.')),
+        );
+        return;
+      }
+
+      // Firebase에 저장
+      final wordKey = baseForm.isNotEmpty ? baseForm : word.toLowerCase();
+      await _firestore.collection('words').doc(wordKey).set(wordData);
+
+      // 로딩 다이얼로그 닫기
+      if (!mounted) return;
+      Navigator.of(context).pop();
+
+      // WordDetailDialog 표시
+      WordDetailDialog.show(
+        context,
+        wordData,
+        sentence,
+        word,
+        wordKey,
+        onMeaningSelected: (selectedWord, meaning) {
+          if (mounted) {
+            setState(() {
+              _selectedWordMeanings.add({
+                'word': wordKey,
+                'meaning': meaning,
+              });
+            });
+          }
+        },
+      );
+    } catch (e) {
+      if (!mounted) return;
+      
+      // 로딩 다이얼로그 닫기
+      Navigator.of(context).pop();
+      
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('단어 정보를 가져오는 중 오류가 발생했습니다: $e'),
+          duration: const Duration(seconds: 5),
+        ),
+      );
+      
+      print('ChatGPT API 오류: $e');
     }
   }
 
