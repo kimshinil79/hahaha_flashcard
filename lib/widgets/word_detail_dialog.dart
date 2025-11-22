@@ -309,174 +309,334 @@ class _WordDetailDialogState extends State<WordDetailDialog> {
 
     return Dialog(
       shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(16),
+        borderRadius: BorderRadius.circular(24),
       ),
       child: Container(
         constraints: BoxConstraints(
           maxWidth: 500,
           maxHeight: maxDialogHeight,
         ),
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(24),
+          color: Colors.white,
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withOpacity(0.15),
+              blurRadius: 30,
+              offset: const Offset(0, 10),
+              spreadRadius: 0,
+            ),
+          ],
+        ),
         child: Column(
-          mainAxisSize: MainAxisSize.max,
+          mainAxisSize: MainAxisSize.min, // 내용에 맞춰 크기 조정
           children: [
-            // 헤더
+            // 헤더 (그라디언트 배경)
             Container(
-              padding: const EdgeInsets.all(20),
+              padding: const EdgeInsets.fromLTRB(24, 20, 20, 20),
               decoration: BoxDecoration(
-                border: Border(
-                  bottom: BorderSide(color: Colors.grey.shade200),
+                gradient: LinearGradient(
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                  colors: [
+                    const Color(0xFF6366F1),
+                    const Color(0xFF818CF8),
+                  ],
+                ),
+                borderRadius: const BorderRadius.only(
+                  topLeft: Radius.circular(24),
+                  topRight: Radius.circular(24),
                 ),
               ),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
                 children: [
-                  // X 버튼 우측 상단
+                  // X 버튼 우측 상단과 단어 제목
                   Row(
-                    mainAxisAlignment: MainAxisAlignment.end,
                     children: [
-                      IconButton(
-                        icon: const Icon(Icons.close, size: 20),
-                        onPressed: () => Navigator.of(context).pop(),
-                        padding: EdgeInsets.zero,
-                        constraints: const BoxConstraints(),
+                      // 단어 표시 (굵게, 흰색)
+                      Expanded(
+                        child: Text(
+                          widget.highlightedWord,
+                          style: const TextStyle(
+                            fontSize: 28,
+                            fontWeight: FontWeight.bold,
+                            color: Colors.white,
+                            letterSpacing: -0.5,
+                          ),
+                        ),
+                      ),
+                      // X 버튼 (흰색)
+                      Container(
+                        decoration: BoxDecoration(
+                          color: Colors.white.withOpacity(0.2),
+                          shape: BoxShape.circle,
+                        ),
+                        child: IconButton(
+                          icon: const Icon(Icons.close, size: 20, color: Colors.white),
+                          onPressed: () => Navigator.of(context).pop(),
+                          padding: EdgeInsets.zero,
+                          constraints: const BoxConstraints(
+                            minWidth: 32,
+                            minHeight: 32,
+                          ),
+                        ),
                       ),
                     ],
                   ),
-                  // 문장
-                  _buildHighlightedSentence(context),
+                  const SizedBox(height: 16),
+                  // 문장 (흰색 반투명 배경)
+                  Container(
+                    padding: const EdgeInsets.all(14),
+                    decoration: BoxDecoration(
+                      color: Colors.white.withOpacity(0.2),
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: _buildHighlightedSentenceForHeader(context),
+                  ),
                 ],
               ),
             ),
-            // 내용 (나머지 공간 모두 사용)
-            Expanded(
-              child: SingleChildScrollView(
-                padding: const EdgeInsets.all(20),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    // meanings 배열을 순회하며 각 의미 표시
-                    ...(_wordData['meanings'] as List).asMap().entries.map((entry) {
-                      final index = entry.key;
-                      final meaning = entry.value as Map<String, dynamic>;
-                      
-                      return Padding(
-                        padding: EdgeInsets.only(
-                          bottom: index < (_wordData['meanings'] as List).length - 1 ? 16 : 0,
-                        ),
-                        child: Container(
-                          padding: const EdgeInsets.all(16),
-                          decoration: BoxDecoration(
-                            color: Colors.white,
-                            borderRadius: BorderRadius.circular(12),
-                            border: Border.all(color: Colors.grey.shade200.withOpacity(0.5)),
-                            boxShadow: [
-                              BoxShadow(
-                                color: Colors.grey.shade100,
-                                blurRadius: 4,
-                                offset: const Offset(0, 2),
-                              ),
-                            ],
+            // 내용 (내용이 많으면 스크롤 가능)
+            Flexible(
+              child: Container(
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    begin: Alignment.topCenter,
+                    end: Alignment.bottomCenter,
+                    colors: [
+                      Colors.white,
+                      Colors.grey.shade50,
+                    ],
+                  ),
+                ),
+                child: SingleChildScrollView(
+                  padding: const EdgeInsets.all(24),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      // meanings 배열을 순회하며 각 의미 표시
+                      ...(_wordData['meanings'] as List).asMap().entries.map((entry) {
+                        final index = entry.key;
+                        final meaning = entry.value as Map<String, dynamic>;
+                        
+                        // 의미별 색상 (순환)
+                        final colors = [
+                          const Color(0xFF6366F1), // Indigo
+                          const Color(0xFF8B5CF6), // Purple
+                          const Color(0xFFEC4899), // Pink
+                          const Color(0xFFF59E0B), // Amber
+                          const Color(0xFF10B981), // Emerald
+                        ];
+                        final primaryColor = colors[index % colors.length];
+                        
+                        return Padding(
+                          padding: EdgeInsets.only(
+                            bottom: index < (_wordData['meanings'] as List).length - 1 ? 20 : 0,
                           ),
-                          child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  // Definition
-                                  if (meaning['definition'] != null) ...[
-                                    _buildDefinitionContent(context, meaning['definition']),
-                                    if (meaning['examples'] != null) const SizedBox(height: 16),
-                                  ],
-                                  // Examples
-                                  if (meaning['examples'] != null) ...[
-                                    _buildExampleContent(context, meaning['examples']),
-                                  ],
-                              // 수정 버튼과 선택 버튼 (예문 밑)
-                              const SizedBox(height: 16),
-                              Row(
-                                mainAxisAlignment: MainAxisAlignment.end,
-                                children: [
-                                  // 수정 버튼
-                                  TextButton(
-                                    onPressed: () => _showEditDialog(index),
-                                    style: TextButton.styleFrom(
-                                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                                      minimumSize: Size.zero,
-                                      tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                                      shape: RoundedRectangleBorder(
-                                        borderRadius: BorderRadius.circular(6),
-                                        side: BorderSide(color: Colors.grey.shade400, width: 1.5),
-                                      ),
-                                    ),
-                                    child: Text(
-                                      '수정',
-                                      style: TextStyle(
-                                        color: Colors.grey.shade700,
-                                        fontWeight: FontWeight.w600,
-                                        fontSize: 12,
-                                      ),
-                                    ),
-                                  ),
-                                  const SizedBox(width: 8),
-                                  // 저장 대기하기 버튼
-                                  TextButton(
-                                    onPressed: () {
-                                      if (widget.onMeaningSelected != null) {
-                                        widget.onMeaningSelected!(widget.highlightedWord, meaning);
-                                      }
-                                      Navigator.of(context).pop();
-                                    },
-                                    style: TextButton.styleFrom(
-                                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                                      minimumSize: Size.zero,
-                                      tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                                      shape: RoundedRectangleBorder(
-                                        borderRadius: BorderRadius.circular(6),
-                                        side: BorderSide(color: Colors.grey.shade400, width: 1.5),
-                                      ),
-                                    ),
-                                    child: Text(
-                                      '저장 대기하기',
-                                      style: TextStyle(
-                                        color: Colors.grey.shade700,
-                                        fontWeight: FontWeight.w600,
-                                        fontSize: 12,
-                                      ),
-                                    ),
-                                  ),
-                                  const SizedBox(width: 8),
-                                  // 단어장 추가 버튼
-                                  TextButton(
-                                    onPressed: () => _addToFlashcardDirectly(meaning),
-                                    style: TextButton.styleFrom(
-                                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                                      minimumSize: Size.zero,
-                                      tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                                      shape: RoundedRectangleBorder(
-                                        borderRadius: BorderRadius.circular(6),
-                                        side: BorderSide(color: const Color(0xFF6366F1), width: 1.5),
-                                      ),
-                                    ),
-                                    child: const Text(
-                                      '단어장 추가',
-                                      style: TextStyle(
-                                        color: Color(0xFF6366F1),
-                                        fontWeight: FontWeight.w600,
-                                        fontSize: 12,
-                                      ),
-                                    ),
-                                  ),
-                                ],
+                          child: Container(
+                            decoration: BoxDecoration(
+                              color: Colors.white,
+                              borderRadius: BorderRadius.circular(20),
+                              border: Border.all(
+                                color: primaryColor.withOpacity(0.2),
+                                width: 1.5,
                               ),
-                            ],
+                              boxShadow: [
+                                BoxShadow(
+                                  color: primaryColor.withOpacity(0.1),
+                                  blurRadius: 15,
+                                  offset: const Offset(0, 5),
+                                  spreadRadius: 0,
+                                ),
+                              ],
+                            ),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                // 의미 번호 헤더
+                                Container(
+                                  padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
+                                  decoration: BoxDecoration(
+                                    color: primaryColor.withOpacity(0.1),
+                                    borderRadius: const BorderRadius.only(
+                                      topLeft: Radius.circular(20),
+                                      topRight: Radius.circular(20),
+                                    ),
+                                  ),
+                                  child: Row(
+                                    children: [
+                                      Container(
+                                        width: 32,
+                                        height: 32,
+                                        decoration: BoxDecoration(
+                                          color: primaryColor,
+                                          shape: BoxShape.circle,
+                                        ),
+                                        child: Center(
+                                          child: Text(
+                                            '${index + 1}',
+                                            style: const TextStyle(
+                                              color: Colors.white,
+                                              fontWeight: FontWeight.bold,
+                                              fontSize: 14,
+                                            ),
+                                          ),
+                                        ),
+                                      ),
+                                      const SizedBox(width: 12),
+                                      const Text(
+                                        '의미',
+                                        style: TextStyle(
+                                          fontSize: 14,
+                                          fontWeight: FontWeight.w600,
+                                          color: Colors.grey,
+                                          letterSpacing: 0.5,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                                // 내용
+                                Padding(
+                                  padding: const EdgeInsets.all(18),
+                                  child: Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      // Definition
+                                      if (meaning['definition'] != null) ...[
+                                        Row(
+                                          crossAxisAlignment: CrossAxisAlignment.start,
+                                          children: [
+                                            Icon(
+                                              Icons.book_outlined,
+                                              size: 18,
+                                              color: primaryColor,
+                                            ),
+                                            const SizedBox(width: 8),
+                                            Expanded(
+                                              child: _buildDefinitionContent(context, meaning['definition']),
+                                            ),
+                                          ],
+                                        ),
+                                        if (meaning['examples'] != null) const SizedBox(height: 18),
+                                      ],
+                                      // Examples
+                                      if (meaning['examples'] != null) ...[
+                                        _buildExampleContent(context, meaning['examples'], primaryColor),
+                                      ],
+                                      // 수정 버튼과 선택 버튼 (예문 밑)
+                                      const SizedBox(height: 18),
+                                      Row(
+                                        mainAxisAlignment: MainAxisAlignment.end,
+                                        children: [
+                                          // 수정 버튼 (항상 표시)
+                                          _buildActionButton(
+                                            icon: Icons.edit_outlined,
+                                            label: '수정',
+                                            color: Colors.grey.shade600,
+                                            onPressed: () => _showEditDialog(index),
+                                          ),
+                                          // 저장 대기하기, 단어장 추가 버튼은 onMeaningSelected가 있을 때만 표시
+                                          if (widget.onMeaningSelected != null) ...[
+                                            const SizedBox(width: 10),
+                                            _buildActionButton(
+                                              icon: Icons.bookmark_border,
+                                              label: '저장 대기하기',
+                                              color: Colors.grey.shade600,
+                                              onPressed: () {
+                                                widget.onMeaningSelected!(widget.highlightedWord, meaning);
+                                                Navigator.of(context).pop();
+                                              },
+                                            ),
+                                            const SizedBox(width: 10),
+                                            _buildActionButton(
+                                              icon: Icons.add_circle_outline,
+                                              label: '단어장 추가',
+                                              color: primaryColor,
+                                              onPressed: () => _addToFlashcardDirectly(meaning),
+                                            ),
+                                          ],
+                                        ],
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ],
+                            ),
                           ),
-                        ),
-                      );
-                    }).toList(),
-                  ],
+                        );
+                      }).toList(),
+                    ],
+                  ),
                 ),
               ),
             ),
           ],
         ),
+      ),
+    );
+  }
+
+  // 헤더용 문장 빌더 (흰색 텍스트)
+  Widget _buildHighlightedSentenceForHeader(BuildContext context) {
+    final List<TextSpan> spans = [];
+    final String lowerSentence = widget.sentence.toLowerCase();
+    final String lowerWord = widget.highlightedWord.toLowerCase();
+    
+    int wordIndex = lowerSentence.indexOf(lowerWord);
+    
+    if (wordIndex == -1) {
+      return Text(
+        widget.sentence,
+        style: const TextStyle(
+          fontSize: 15,
+          height: 1.5,
+          color: Colors.white,
+        ),
+      );
+    }
+    
+    if (wordIndex > 0) {
+      spans.add(TextSpan(
+        text: widget.sentence.substring(0, wordIndex),
+        style: const TextStyle(
+          fontSize: 15,
+          height: 1.5,
+          color: Colors.white70,
+        ),
+      ));
+    }
+    
+    final int wordLength = widget.highlightedWord.length;
+    spans.add(TextSpan(
+      text: widget.sentence.substring(wordIndex, wordIndex + wordLength),
+      style: const TextStyle(
+        fontSize: 15,
+        height: 1.5,
+        fontWeight: FontWeight.bold,
+        color: Colors.white,
+      ),
+    ));
+    
+    if (wordIndex + wordLength < widget.sentence.length) {
+      spans.add(TextSpan(
+        text: widget.sentence.substring(wordIndex + wordLength),
+        style: const TextStyle(
+          fontSize: 15,
+          height: 1.5,
+          color: Colors.white70,
+        ),
+      ));
+    }
+    
+    return Text.rich(
+      TextSpan(children: spans),
+      style: const TextStyle(
+        fontSize: 15,
+        height: 1.5,
       ),
     );
   }
@@ -576,7 +736,7 @@ class _WordDetailDialogState extends State<WordDetailDialog> {
     }
   }
 
-  Widget _buildExampleContent(BuildContext context, dynamic example) {
+  Widget _buildExampleContent(BuildContext context, dynamic example, Color accentColor) {
     Widget buildExampleText(String text) {
       final List<TextSpan> spans = [];
       final RegExp boldRegex = RegExp(r'\*\*(.*?)\*\*');
@@ -587,18 +747,18 @@ class _WordDetailDialogState extends State<WordDetailDialog> {
           spans.add(TextSpan(
             text: text.substring(lastIndex, match.start),
             style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                  height: 1.6,
+                  height: 1.7,
                   fontSize: 14,
-                  color: Colors.grey.shade800,
+                  color: Colors.grey.shade700,
                 ),
           ));
         }
         spans.add(TextSpan(
           text: match.group(1),
           style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                height: 1.6,
+                height: 1.7,
                 fontSize: 14,
-                color: const Color(0xFF6366F1),
+                color: accentColor,
                 fontWeight: FontWeight.w600,
               ),
         ));
@@ -608,9 +768,9 @@ class _WordDetailDialogState extends State<WordDetailDialog> {
         spans.add(TextSpan(
           text: text.substring(lastIndex),
           style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                height: 1.6,
+                height: 1.7,
                 fontSize: 14,
-                color: Colors.grey.shade800,
+                color: Colors.grey.shade700,
               ),
         ));
       }
@@ -630,28 +790,104 @@ class _WordDetailDialogState extends State<WordDetailDialog> {
           return Padding(
             padding: EdgeInsets.only(bottom: index < example.length - 1 ? 12 : 0),
             child: Container(
-              padding: const EdgeInsets.all(14),
+              padding: const EdgeInsets.all(16),
               decoration: BoxDecoration(
-                color: Colors.grey.shade50,
-                borderRadius: BorderRadius.circular(12),
-                border: Border.all(color: Colors.grey.shade200),
+                gradient: LinearGradient(
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                  colors: [
+                    accentColor.withOpacity(0.08),
+                    accentColor.withOpacity(0.03),
+                  ],
+                ),
+                borderRadius: BorderRadius.circular(14),
+                border: Border.all(
+                  color: accentColor.withOpacity(0.2),
+                  width: 1.5,
+                ),
               ),
-              child: buildExampleText(item.toString()),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Icon(
+                    Icons.format_quote,
+                    size: 20,
+                    color: accentColor.withOpacity(0.6),
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: buildExampleText(item.toString()),
+                  ),
+                ],
+              ),
             ),
           );
         }).toList(),
       );
     } else {
       return Container(
-        padding: const EdgeInsets.all(14),
+        padding: const EdgeInsets.all(16),
         decoration: BoxDecoration(
-          color: Colors.grey.shade50,
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: Colors.grey.shade200),
+          gradient: LinearGradient(
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+            colors: [
+              accentColor.withOpacity(0.08),
+              accentColor.withOpacity(0.03),
+            ],
+          ),
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(
+            color: accentColor.withOpacity(0.2),
+            width: 1.5,
+          ),
         ),
-        child: buildExampleText(example.toString()),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Icon(
+              Icons.format_quote,
+              size: 20,
+              color: accentColor.withOpacity(0.6),
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: buildExampleText(example.toString()),
+            ),
+          ],
+        ),
       );
     }
   }
+
+  Widget _buildActionButton({
+    required IconData icon,
+    required String label,
+    required Color color,
+    required VoidCallback onPressed,
+  }) {
+    return ElevatedButton.icon(
+      onPressed: onPressed,
+      icon: Icon(icon, size: 16),
+      label: Text(label),
+      style: ElevatedButton.styleFrom(
+        backgroundColor: color.withOpacity(0.1),
+        foregroundColor: color,
+        elevation: 0,
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+        minimumSize: Size.zero,
+        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(10),
+          side: BorderSide(color: color.withOpacity(0.3), width: 1.5),
+        ),
+        textStyle: const TextStyle(
+          fontSize: 12,
+          fontWeight: FontWeight.w600,
+        ),
+      ),
+    );
+  }
 }
+
 

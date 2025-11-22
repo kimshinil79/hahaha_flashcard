@@ -16,6 +16,7 @@ import 'widgets/add_to_flashcard_dialog.dart';
 import 'widgets/flashcard_study_screen.dart';
 import 'widgets/study_calendar_widget.dart';
 import 'widgets/word_addition_chart.dart';
+import 'widgets/flashcard_list_dialog.dart';
 import 'services/chatgpt_service.dart';
 import 'dart:convert';
 import 'dart:async';
@@ -844,63 +845,127 @@ class _MyHomePageState extends State<MyHomePage> {
                       children: <Widget>[
                         if (_recognizedText == null ||
                             _recognizedText!.isEmpty) ...[
-                          // 공부 시작 카드 (고정, 텍스트 추출 전/없을 때만 표시)
-                          GestureDetector(
-                            onTap: _startStudy,
-                            child: Container(
-                              padding: const EdgeInsets.all(24),
-                              decoration: BoxDecoration(
-                                color: Colors.white,
-                                borderRadius: BorderRadius.circular(16),
-                                boxShadow: [
-                                  BoxShadow(
-                                    color: Colors.grey.withOpacity(0.2),
-                                    blurRadius: 12,
-                                    offset: const Offset(0, 4),
-                                  ),
-                                ],
-                              ),
-                              child: Row(
-                                children: [
-                                  const Icon(
-                                    Icons.school,
-                                    color: Color(0xFF6366F1),
-                                    size: 32,
-                                  ),
-                                  const SizedBox(width: 16),
-                                  Expanded(
-                                    child: Column(
-                                      crossAxisAlignment: CrossAxisAlignment.start,
-                                      children: [
-                                        const Text(
-                                          '공부 시작',
-                                          style: TextStyle(
-                                            color: Color(0xFF6366F1),
-                                            fontSize: 20,
-                                            fontWeight: FontWeight.w700,
-                                          ),
+                          // 단어장 카드와 공부 시작 카드 (가로로 나란히)
+                          Row(
+                            children: [
+                              // 단어장 카드 (가로 폭의 반)
+                              Expanded(
+                                child: GestureDetector(
+                                  onTap: () {
+                                    FlashcardListDialog.show(context);
+                                  },
+                                  child: Container(
+                                    padding: const EdgeInsets.all(20),
+                                    decoration: BoxDecoration(
+                                      color: Colors.white,
+                                      borderRadius: BorderRadius.circular(16),
+                                      boxShadow: [
+                                        BoxShadow(
+                                          color: Colors.grey.withOpacity(0.2),
+                                          blurRadius: 12,
+                                          offset: const Offset(0, 4),
                                         ),
-                                        const SizedBox(height: 4),
-                                        Text(
-                                          _isLoadingFlashcards
-                                              ? '로딩 중...'
-                                              : '${_studyFlashcards.length}개의 단어가 준비되어 있어요',
-                                          style: TextStyle(
-                                            color: Colors.grey.shade600,
-                                            fontSize: 14,
+                                      ],
+                                    ),
+                                    child: Row(
+                                      children: [
+                                        const Icon(
+                                          Icons.book,
+                                          color: Color(0xFF6366F1),
+                                          size: 28,
+                                        ),
+                                        const SizedBox(width: 12),
+                                        const Expanded(
+                                          child: Column(
+                                            crossAxisAlignment: CrossAxisAlignment.start,
+                                            mainAxisSize: MainAxisSize.min,
+                                            children: [
+                                              Text(
+                                                '단어장',
+                                                style: TextStyle(
+                                                  color: Color(0xFF6366F1),
+                                                  fontSize: 18,
+                                                  fontWeight: FontWeight.w700,
+                                                ),
+                                              ),
+                                              SizedBox(height: 4),
+                                              Text(
+                                                '단어 목록 보기',
+                                                style: TextStyle(
+                                                  color: Colors.grey,
+                                                  fontSize: 12,
+                                                ),
+                                                maxLines: 1,
+                                                overflow: TextOverflow.ellipsis,
+                                              ),
+                                            ],
                                           ),
                                         ),
                                       ],
                                     ),
                                   ),
-                                  Icon(
-                                    Icons.arrow_forward_ios,
-                                    color: const Color(0xFF6366F1).withOpacity(0.8),
-                                    size: 20,
-                                  ),
-                                ],
+                                ),
                               ),
-                            ),
+                              const SizedBox(width: 12),
+                              // 공부 시작 카드 (가로 폭의 반)
+                              Expanded(
+                                child: GestureDetector(
+                                  onTap: _startStudy,
+                                  child: Container(
+                                    padding: const EdgeInsets.all(20),
+                                    decoration: BoxDecoration(
+                                      color: Colors.white,
+                                      borderRadius: BorderRadius.circular(16),
+                                      boxShadow: [
+                                        BoxShadow(
+                                          color: Colors.grey.withOpacity(0.2),
+                                          blurRadius: 12,
+                                          offset: const Offset(0, 4),
+                                        ),
+                                      ],
+                                    ),
+                                    child: Row(
+                                      children: [
+                                        const Icon(
+                                          Icons.school,
+                                          color: Color(0xFF6366F1),
+                                          size: 28,
+                                        ),
+                                        const SizedBox(width: 12),
+                                        Expanded(
+                                          child: Column(
+                                            crossAxisAlignment: CrossAxisAlignment.start,
+                                            mainAxisSize: MainAxisSize.min,
+                                            children: [
+                                              const Text(
+                                                '공부 시작',
+                                                style: TextStyle(
+                                                  color: Color(0xFF6366F1),
+                                                  fontSize: 18,
+                                                  fontWeight: FontWeight.w700,
+                                                ),
+                                              ),
+                                              const SizedBox(height: 4),
+                                              Text(
+                                                _isLoadingFlashcards
+                                                    ? '로딩 중...'
+                                                    : '${_studyFlashcards.length}개 준비',
+                                                style: TextStyle(
+                                                  color: Colors.grey.shade600,
+                                                  fontSize: 12,
+                                                ),
+                                                maxLines: 1,
+                                                overflow: TextOverflow.ellipsis,
+                                              ),
+                                            ],
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ],
                           ),
                           const SizedBox(height: 20),
                           // 스크롤 가능한 영역 (달력 + 그래프)
