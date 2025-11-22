@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'add_to_flashcard_dialog.dart';
 
 class WordDetailDialog extends StatefulWidget {
   final Map<String, dynamic> wordData;
@@ -202,6 +203,24 @@ class _WordDetailDialogState extends State<WordDetailDialog> {
     }
   }
 
+  Future<void> _addToFlashcardDirectly(Map<String, dynamic> meaning) async {
+    // 단어장 추가 다이얼로그를 바로 열어서 저장
+    final result = await AddToFlashcardDialog.show(
+      context,
+      [
+        {
+          'word': widget.wordKey,
+          'meaning': meaning,
+        },
+      ],
+    );
+
+    // 저장 성공 시 WordDetailDialog 닫기 (성공 메시지는 main.dart에서 표시)
+    if (result == true && mounted) {
+      Navigator.of(context).pop(); // WordDetailDialog 닫기
+    }
+  }
+
   Future<void> _updateMeaning(
       int meaningIndex, String definition, String examples) async {
     try {
@@ -332,7 +351,7 @@ class _WordDetailDialogState extends State<WordDetailDialog> {
             Expanded(
               child: SingleChildScrollView(
                 padding: const EdgeInsets.all(20),
-                  child: Column(
+                child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     // meanings 배열을 순회하며 각 의미 표시
@@ -359,17 +378,17 @@ class _WordDetailDialogState extends State<WordDetailDialog> {
                             ],
                           ),
                           child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              // Definition
-                              if (meaning['definition'] != null) ...[
-                                _buildDefinitionContent(context, meaning['definition']),
-                                if (meaning['examples'] != null) const SizedBox(height: 16),
-                              ],
-                              // Examples
-                              if (meaning['examples'] != null) ...[
-                                _buildExampleContent(context, meaning['examples']),
-                              ],
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  // Definition
+                                  if (meaning['definition'] != null) ...[
+                                    _buildDefinitionContent(context, meaning['definition']),
+                                    if (meaning['examples'] != null) const SizedBox(height: 16),
+                                  ],
+                                  // Examples
+                                  if (meaning['examples'] != null) ...[
+                                    _buildExampleContent(context, meaning['examples']),
+                                  ],
                               // 수정 버튼과 선택 버튼 (예문 밑)
                               const SizedBox(height: 16),
                               Row(
@@ -397,7 +416,7 @@ class _WordDetailDialogState extends State<WordDetailDialog> {
                                     ),
                                   ),
                                   const SizedBox(width: 8),
-                                  // 선택 버튼
+                                  // 저장 대기하기 버튼
                                   TextButton(
                                     onPressed: () {
                                       if (widget.onMeaningSelected != null) {
@@ -411,11 +430,33 @@ class _WordDetailDialogState extends State<WordDetailDialog> {
                                       tapTargetSize: MaterialTapTargetSize.shrinkWrap,
                                       shape: RoundedRectangleBorder(
                                         borderRadius: BorderRadius.circular(6),
+                                        side: BorderSide(color: Colors.grey.shade400, width: 1.5),
+                                      ),
+                                    ),
+                                    child: Text(
+                                      '저장 대기하기',
+                                      style: TextStyle(
+                                        color: Colors.grey.shade700,
+                                        fontWeight: FontWeight.w600,
+                                        fontSize: 12,
+                                      ),
+                                    ),
+                                  ),
+                                  const SizedBox(width: 8),
+                                  // 단어장 추가 버튼
+                                  TextButton(
+                                    onPressed: () => _addToFlashcardDirectly(meaning),
+                                    style: TextButton.styleFrom(
+                                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                                      minimumSize: Size.zero,
+                                      tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                                      shape: RoundedRectangleBorder(
+                                        borderRadius: BorderRadius.circular(6),
                                         side: BorderSide(color: const Color(0xFF6366F1), width: 1.5),
                                       ),
                                     ),
                                     child: const Text(
-                                      '선택',
+                                      '단어장 추가',
                                       style: TextStyle(
                                         color: Color(0xFF6366F1),
                                         fontWeight: FontWeight.w600,

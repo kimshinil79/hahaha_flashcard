@@ -36,6 +36,13 @@
                 <data android:mimeType="image/*"/>
             </intent-filter>
             
+            <!-- 텍스트 선택 시 검색 메뉴에 나타나기 -->
+            <intent-filter android:priority="999">
+                <action android:name="android.intent.action.PROCESS_TEXT"/>
+                <category android:name="android.intent.category.DEFAULT"/>
+                <data android:mimeType="text/plain"/>
+            </intent-filter>
+            
             <!-- 앱 이름과 라벨 변경으로 공유 목록에서 더 눈에 띄게 -->
             <meta-data
                 android:name="android.service.chooser.chooser_target_service"

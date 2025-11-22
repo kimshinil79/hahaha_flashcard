@@ -189,6 +189,8 @@ class _MyHomePageState extends State<MyHomePage> {
     return lastStudied.add(interval);
   }
 
+  static const MethodChannel _channel = MethodChannel('com.example.hahaha_flashcard/text');
+
   @override
   void initState() {
     super.initState();
@@ -196,6 +198,7 @@ class _MyHomePageState extends State<MyHomePage> {
     _printCurrentUserDocumentId();
     _loadStudyFlashcards();
     _listenToSharedImages();
+    _listenToSharedText();
   }
 
   void _listenToSharedImages() {
@@ -215,6 +218,330 @@ class _MyHomePageState extends State<MyHomePage> {
         _handleSharedImage(value[0].path);
       }
     });
+  }
+
+  void _listenToSharedText() {
+    // 플랫폼 채널을 통해 텍스트 수신
+    _channel.setMethodCallHandler((call) async {
+      if (call.method == "processText" && call.arguments != null) {
+        final text = call.arguments as String;
+        if (text.trim().isNotEmpty) {
+          _handleSharedText(text.trim());
+        }
+      }
+    });
+  }
+
+  Future<void> _handleSharedText(String text) async {
+    if (text.isEmpty) return;
+
+    // 텍스트에서 단어 추출 (공백으로 분리, 첫 번째 단어 사용)
+    final words = text.split(RegExp(r'\s+'));
+    if (words.isEmpty) return;
+
+    // 첫 번째 단어를 검색
+    final word = words[0].trim();
+    if (word.isEmpty) return;
+
+    // 특수문자 제거 (알파벳과 숫자만)
+    final cleanWord = word.replaceAll(RegExp(r'[^a-zA-Z0-9]'), '');
+    if (cleanWord.isEmpty) return;
+
+    if (!mounted) return;
+
+    // 단어 검색 실행
+    final baseForm = _getWordBaseForm(cleanWord);
+    await _searchWordFromExternal(cleanWord, baseForm);
+  }
+
+  Future<void> _addPronunciationToWords() async {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('로그인이 필요합니다.')),
+        );
+      }
+      return;
+    }
+
+    // 진행 상황을 보여주는 다이얼로그
+    if (!mounted) return;
+    
+    BuildContext? dialogContext;
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) {
+        dialogContext = context;
+        return const _PronunciationProgressDialog();
+      },
+    );
+
+    try {
+      // 전체 단어 개수 추정 (최대한 정확하게 계산하기 어려우므로 대략적인 추정)
+      // 실제로는 배치를 처리하면서 추적
+      
+      int processedCount = 0;
+      int updatedCount = 0;
+      int skippedCount = 0;
+      int errorCount = 0;
+      final startTime = DateTime.now();
+      Duration? lastDelay = const Duration(milliseconds: 500); // 초기 딜레이: 500ms
+      
+      // 페이징 처리를 위한 설정
+      const int batchSize = 50; // 한 번에 처리할 단어 수 (메모리 절약)
+      DocumentSnapshot? lastDoc; // 마지막으로 처리한 문서 (페이징용)
+      bool hasMore = true;
+      
+      while (hasMore && mounted) {
+        // 배치 단위로 단어 가져오기 (메모리 절약)
+        QuerySnapshot wordsSnapshot;
+        if (lastDoc == null) {
+          // 첫 번째 배치
+          wordsSnapshot = await _firestore
+              .collection('words')
+              .limit(batchSize)
+              .get();
+        } else {
+          // 다음 배치 (커서 기반 페이징)
+          wordsSnapshot = await _firestore
+              .collection('words')
+              .startAfterDocument(lastDoc)
+              .limit(batchSize)
+              .get();
+        }
+        
+        final words = wordsSnapshot.docs;
+        
+        // 더 이상 가져올 단어가 없으면 종료
+        if (words.isEmpty) {
+          hasMore = false;
+          break;
+        }
+        
+        // 마지막 문서 저장 (다음 배치를 위한 커서)
+        lastDoc = words.last;
+        
+        // 이번 배치의 단어 수가 batchSize보다 적으면 마지막 배치
+        if (words.length < batchSize) {
+          hasMore = false;
+        }
+        
+        // 배치 내의 각 단어 처리
+        for (var doc in words) {
+          if (!mounted) {
+            hasMore = false;
+            break;
+          }
+          
+          final wordData = doc.data() as Map<String, dynamic>;
+          final word = doc.id;
+          
+          // 이미 발음기호가 있는 단어는 스킵
+          if (wordData['pronunciation'] != null && 
+              (wordData['pronunciation'] as String).trim().isNotEmpty) {
+            skippedCount++;
+            processedCount++;
+            continue;
+          }
+
+          try {
+            final wordStartTime = DateTime.now();
+            
+            // ChatGPT API로 발음기호 가져오기
+            final pronunciation = await ChatGPTService.getPronunciation(word);
+            
+            final apiCallTime = DateTime.now().difference(wordStartTime);
+            
+            if (pronunciation != null && pronunciation.trim().isNotEmpty) {
+              try {
+                // Firebase에 발음기호 저장
+                await doc.reference.update({
+                  'pronunciation': pronunciation.trim(),
+                });
+                updatedCount++;
+                print('✅ "$word" 발음기호 추가 완료: $pronunciation (소요시간: ${apiCallTime.inMilliseconds}ms)');
+              } catch (saveError) {
+                // 발음기호는 가져왔지만 저장 실패한 경우
+                errorCount++;
+                await _savePronunciationFailure(word, saveError.toString());
+                print('❌ 단어 "$word"의 발음기호 저장 실패: $saveError');
+              }
+            } else {
+              // 발음기호를 가져오지 못한 경우
+              errorCount++;
+              await _savePronunciationFailure(word, '발음기호를 가져올 수 없음 (null 또는 빈 문자열)');
+              print('❌ 단어 "$word"의 발음기호를 가져올 수 없음');
+            }
+            
+            // API 호출 시간에 따라 딜레이 조정
+            // API 호출이 빠르면(500ms 이하) 딜레이를 늘리고, 느리면(2초 이상) 딜레이를 줄임
+            if (apiCallTime.inMilliseconds < 500) {
+              // 빠른 응답은 Rate Limit 회피를 위해 딜레이 증가
+              lastDelay = const Duration(milliseconds: 800);
+            } else if (apiCallTime.inMilliseconds > 2000) {
+              // 느린 응답은 이미 자연스러운 딜레이 역할을 하므로 최소 딜레이
+              lastDelay = const Duration(milliseconds: 300);
+            } else {
+              // 적당한 응답 시간은 중간 딜레이
+              lastDelay = const Duration(milliseconds: 500);
+            }
+            
+            // API 호출 제한을 피하기 위해 딜레이
+            await Future.delayed(lastDelay);
+          } catch (e) {
+            errorCount++;
+            final errorMsg = e.toString();
+            
+            // Rate Limit 오류 감지
+            if (errorMsg.contains('rate limit') || 
+                errorMsg.contains('429') ||
+                errorMsg.contains('too many requests')) {
+              print('⚠️ Rate Limit 감지됨. 10초 대기 후 계속...');
+              await Future.delayed(const Duration(seconds: 10));
+              lastDelay = const Duration(milliseconds: 1500); // Rate Limit 후 딜레이 증가
+            }
+            
+            // 실패한 단어를 Firebase에 저장
+            await _savePronunciationFailure(word, errorMsg);
+            
+            print('❌ 단어 "$word"의 발음기호 가져오기 실패: $e');
+            // 에러가 발생해도 다음 단어로 계속 진행
+          }
+          
+          processedCount++;
+          
+          // 진행 상황 표시 (콘솔) - 10개마다 또는 배치 처리 후
+          if (processedCount % 10 == 0) {
+            final elapsed = DateTime.now().difference(startTime);
+            
+            print('📊 발음기호 추가 진행: $processedCount개 처리됨 '
+                '(업데이트: $updatedCount, 스킵: $skippedCount, 오류: $errorCount) '
+                '(경과: ${elapsed.inMinutes}분 ${elapsed.inSeconds % 60}초)');
+          }
+        }
+        
+        // 배치 처리 후 메모리 정리 힌트 (Garbage Collection)
+        // Dart의 GC는 자동이지만, 명시적으로 힌트를 줄 수 있음
+        if (processedCount % 100 == 0) {
+          // 주기적으로 짧은 딜레이를 두어 GC 시간 확보
+          await Future.delayed(const Duration(milliseconds: 100));
+        }
+      }
+      
+      // 마지막 진행 상황 표시
+      if (processedCount > 0) {
+        final elapsed = DateTime.now().difference(startTime);
+        print('📊 발음기호 추가 완료: 총 $processedCount개 처리됨 '
+            '(업데이트: $updatedCount, 스킵: $skippedCount, 오류: $errorCount) '
+            '(총 소요 시간: ${elapsed.inMinutes}분 ${elapsed.inSeconds % 60}초)');
+      }
+      
+      final totalTime = DateTime.now().difference(startTime);
+
+      if (mounted && dialogContext != null) {
+        Navigator.of(dialogContext!).pop(); // 다이얼로그 닫기
+        
+        final totalMinutes = totalTime.inMinutes;
+        final totalSeconds = totalTime.inSeconds % 60;
+        
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              '완료! 총 $processedCount개 처리 (업데이트: $updatedCount, 스킵: $skippedCount, 오류: $errorCount)\n'
+              '총 소요 시간: ${totalMinutes}분 ${totalSeconds}초',
+            ),
+            backgroundColor: Colors.green,
+            duration: const Duration(seconds: 5),
+          ),
+        );
+      }
+
+    } catch (e) {
+      if (mounted && dialogContext != null) {
+        Navigator.of(dialogContext!).pop(); // 다이얼로그 닫기
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('발음기호 추가 중 오류가 발생했습니다: $e'),
+            backgroundColor: Colors.red,
+            duration: const Duration(seconds: 5),
+          ),
+        );
+      }
+      print('발음기호 추가 오류: $e');
+    }
+  }
+
+  /// 발음기호 저장 실패한 단어를 Firebase에 별도로 저장
+  Future<void> _savePronunciationFailure(String word, String errorMessage) async {
+    try {
+      final user = FirebaseAuth.instance.currentUser;
+      if (user == null) return;
+
+      // pronunciation_failures 컬렉션에 실패 정보 저장
+      await _firestore.collection('pronunciation_failures').doc(word).set({
+        'word': word,
+        'error': errorMessage,
+        'failedAt': FieldValue.serverTimestamp(),
+        'retryCount': 0, // 나중에 재시도 기능 추가 시 사용
+      }, SetOptions(merge: true)); // 이미 존재하면 업데이트, 없으면 생성
+      
+      print('💾 실패한 단어 저장: "$word" - $errorMessage');
+    } catch (e) {
+      // 실패 저장 자체가 실패해도 메인 프로세스는 계속 진행
+      print('⚠️ 실패한 단어 저장 중 오류 발생: $e');
+    }
+  }
+
+  Future<void> _searchWordFromExternal(String word, String baseForm) async {
+    try {
+      // 원형으로 먼저 검색
+      var docRef = _firestore.collection('words').doc(baseForm);
+      var docSnapshot = await docRef.get();
+
+      // 원형으로 찾지 못하면 원래 단어로도 시도
+      if (!docSnapshot.exists && baseForm != word.toLowerCase()) {
+        docRef = _firestore.collection('words').doc(word.toLowerCase());
+        docSnapshot = await docRef.get();
+      }
+
+      if (docSnapshot.exists) {
+        final data = docSnapshot.data();
+        if (mounted && data != null) {
+          // 사용할 단어 키 결정 (원형 우선, 없으면 원래 단어)
+          final wordKey = baseForm.isNotEmpty ? baseForm : word.toLowerCase();
+          WordDetailDialog.show(
+            context,
+            data,
+            '', // 외부에서 온 텍스트이므로 문장 없음
+            word,
+            wordKey,
+            onMeaningSelected: (selectedWord, meaning) {
+              if (mounted) {
+                setState(() {
+                  _selectedWordMeanings.add({
+                    'word': wordKey,
+                    'meaning': meaning,
+                  });
+                });
+              }
+            },
+          );
+        }
+      } else {
+        // 단어를 찾지 못하면 ChatGPT API 호출
+        if (mounted) {
+          _fetchWordFromChatGPT(word, '', baseForm);
+        }
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('단어 검색 중 오류가 발생했습니다: $e')),
+        );
+      }
+    }
   }
 
   Future<void> _handleSharedImage(String imagePath) async {
@@ -260,6 +587,7 @@ class _MyHomePageState extends State<MyHomePage> {
   @override
   void dispose() {
     _intentDataStreamSubscription?.cancel();
+    _channel.setMethodCallHandler(null);
     super.dispose();
   }
 
@@ -456,6 +784,18 @@ class _MyHomePageState extends State<MyHomePage> {
           fit: BoxFit.contain,
         ),
         actions: [
+          // TextButton.icon(
+          //   onPressed: _addPronunciationToWords,
+          //   icon: const Icon(Icons.phonelink_ring, size: 18),
+          //   label: const Text(
+          //     '발음기호 넣기',
+          //     style: TextStyle(fontSize: 12),
+          //   ),
+          //   style: TextButton.styleFrom(
+          //     foregroundColor: const Color(0xFF6366F1),
+          //     padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+          //   ),
+          // ),
           IconButton(
             icon: const Icon(Icons.search),
             onPressed: () {
@@ -1004,6 +1344,35 @@ class _MyHomePageState extends State<MyHomePage> {
       );
     }
   }
+}
 
+/// 발음기호 업데이트 진행 상황을 보여주는 다이얼로그
+class _PronunciationProgressDialog extends StatelessWidget {
+  const _PronunciationProgressDialog();
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(16),
+      ),
+      title: const Text('발음기호 추가 중...'),
+      content: const Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          CircularProgressIndicator(),
+          SizedBox(height: 16),
+          Text(
+            '단어들의 발음기호를 가져오는 중입니다.\n시간이 걸릴 수 있습니다.',
+            textAlign: TextAlign.center,
+            style: TextStyle(
+              fontSize: 14,
+              color: Colors.grey,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
 }
 

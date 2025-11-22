@@ -40,47 +40,47 @@ class SelectedWordList extends StatelessWidget {
             runSpacing: 8,
             children: [
               ...selectedWords.asMap().entries.map((entry) {
-                final index = entry.key;
-                final word = entry.value['word'] as String;
+              final index = entry.key;
+              final word = entry.value['word'] as String;
 
-                return Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                  decoration: BoxDecoration(
-                    color: Colors.white,
-                    borderRadius: BorderRadius.circular(8),
-                    border: Border.all(color: const Color(0xFF6366F1).withOpacity(0.3)),
-                    boxShadow: [
-                      BoxShadow(
-                        color: Colors.grey.shade100,
-                        blurRadius: 4,
-                        offset: const Offset(0, 2),
+              return Container(
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: const Color(0xFF6366F1).withOpacity(0.3)),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.grey.shade100,
+                      blurRadius: 4,
+                      offset: const Offset(0, 2),
+                    ),
+                  ],
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      word,
+                      style: Theme.of(context).textTheme.bodyLarge?.copyWith(
+                            fontWeight: FontWeight.w600,
+                            fontSize: 14,
+                            color: const Color(0xFF6366F1),
+                          ),
+                    ),
+                    const SizedBox(width: 6),
+                    GestureDetector(
+                      onTap: () => onRemove(index),
+                      child: const Icon(
+                        Icons.close,
+                        size: 16,
+                        color: Colors.grey,
                       ),
-                    ],
-                  ),
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Text(
-                        word,
-                        style: Theme.of(context).textTheme.bodyLarge?.copyWith(
-                              fontWeight: FontWeight.w600,
-                              fontSize: 14,
-                              color: const Color(0xFF6366F1),
-                            ),
-                      ),
-                      const SizedBox(width: 6),
-                      GestureDetector(
-                        onTap: () => onRemove(index),
-                        child: const Icon(
-                          Icons.close,
-                          size: 16,
-                          color: Colors.grey,
-                        ),
-                      ),
-                    ],
-                  ),
-                );
-              }).toList(),
+                    ),
+                  ],
+                ),
+              );
+            }).toList(),
               // 단어장에 추가 버튼
               if (onAddToFlashcard != null)
                 Container(

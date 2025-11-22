@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:flutter_tts/flutter_tts.dart';
 import 'group_selection_dialog.dart';
 
 enum StudyContinuationOption {
@@ -38,6 +39,11 @@ class _FlashcardStudyScreenState extends State<FlashcardStudyScreen>
   // 슬라이드 애니메이션
   late AnimationController _slideController;
   late Animation<Offset> _slideAnimation;
+  
+  // TTS (Text-to-Speech)
+  FlutterTts? _flutterTts; // nullable로 변경하여 초기화 실패 대비
+  bool _isSpeaking = false;
+  bool _isTtsInitialized = false; // TTS 초기화 성공 여부 추적
 
   @override
   void initState() {
@@ -68,12 +74,103 @@ class _FlashcardStudyScreenState extends State<FlashcardStudyScreen>
       curve: Curves.easeInOut,
     ));
 
+    // TTS 초기화
+    _initializeTts();
+    
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted && _flashcards.isNotEmpty) {
         _updateViewCount(0);
       }
     });
   }
+
+  Future<void> _initializeTts() async {
+    try {
+      _flutterTts = FlutterTts();
+      
+      // TTS 설정
+      await _flutterTts!.setLanguage("en-US"); // 영어 (미국)
+      await _flutterTts!.setSpeechRate(0.5); // 속도 (0.0 ~ 1.0)
+      await _flutterTts!.setVolume(1.0); // 볼륨 (0.0 ~ 1.0)
+      await _flutterTts!.setPitch(1.0); // 음높이 (0.5 ~ 2.0)
+      
+      // 완료 콜백 설정
+      _flutterTts!.setCompletionHandler(() {
+        if (mounted) {
+          setState(() {
+            _isSpeaking = false;
+          });
+        }
+      });
+      
+      // 에러 핸들러 설정
+      _flutterTts!.setErrorHandler((msg) {
+        if (mounted) {
+          setState(() {
+            _isSpeaking = false;
+          });
+          print('TTS 오류: $msg');
+        }
+      });
+      
+      // 초기화 성공 플래그 설정
+      _isTtsInitialized = true;
+    } catch (e) {
+      print('TTS 초기화 실패: $e');
+      print('앱을 완전히 재빌드해주세요: flutter run');
+      _isTtsInitialized = false;
+      _flutterTts = null; // 실패 시 null로 설정
+    }
+  }
+  
+  Future<void> _speakWord(String word) async {
+    // TTS가 초기화되지 않았으면 스킵
+    if (!_isTtsInitialized || _flutterTts == null) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('발음 기능을 사용할 수 없습니다. 앱을 재빌드해주세요.'),
+            duration: Duration(seconds: 2),
+          ),
+        );
+      }
+      return;
+    }
+    
+    try {
+      if (_isSpeaking) {
+        // 이미 재생 중이면 중지
+        await _flutterTts!.stop();
+        setState(() {
+          _isSpeaking = false;
+        });
+        return;
+      }
+      
+      setState(() {
+        _isSpeaking = true;
+      });
+      
+      await _flutterTts!.speak(word);
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _isSpeaking = false;
+        });
+        print('단어 발음 재생 오류: $e');
+        // TTS가 사용 불가능한 경우 사용자에게 알림
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('발음 기능을 사용할 수 없습니다. 앱을 재빌드해주세요.'),
+              duration: Duration(seconds: 2),
+            ),
+          );
+        }
+      }
+    }
+  }
+  
 
   void _initializeStarCounts() {
     _starCounts.clear();
@@ -1292,14 +1389,76 @@ class _FlashcardStudyScreenState extends State<FlashcardStudyScreen>
                   }),
                 ),
               ),
+            // 스피커 아이콘 (우측 하단)
+            Positioned(
+              bottom: 16,
+              right: 16,
+              child: GestureDetector(
+                onTap: () => _speakWord(word),
+                child: Container(
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    color: Colors.white.withOpacity(0.9),
+                    shape: BoxShape.circle,
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withOpacity(0.1),
+                        blurRadius: 4,
+                        offset: const Offset(0, 2),
+                      ),
+                    ],
+                  ),
+                  child: Icon(
+                    _isSpeaking ? Icons.volume_up : Icons.volume_up_outlined,
+                    color: const Color(0xFF6366F1),
+                    size: 24,
+                  ),
+                ),
+              ),
+            ),
           ],
         );
       },
     );
   }
 
-  Widget _buildBackCard(String word, Map<String, dynamic> meaning) {
+  /// 단어의 발음기호를 Firebase에서 가져와서 플래시카드 데이터에 추가
+  Future<void> _loadPronunciationIfNeeded(String word, int index) async {
+    // 인덱스가 유효한지 확인
+    if (index >= _flashcards.length || index < 0) return;
+    
+    // 이미 발음기호가 있으면 스킵
+    if (_flashcards[index]['pronunciation'] != null &&
+        (_flashcards[index]['pronunciation'] as String).trim().isNotEmpty) {
+      return;
+    }
+    
+    try {
+      // words 컬렉션에서 발음기호 가져오기
+      final wordDoc = await _firestore.collection('words').doc(word.toLowerCase()).get();
+      
+      if (wordDoc.exists) {
+        final wordData = wordDoc.data();
+        final pronunciation = wordData?['pronunciation'] as String?;
+        
+        if (pronunciation != null && pronunciation.trim().isNotEmpty && mounted) {
+          // 플래시카드 데이터에 발음기호 추가
+          if (index < _flashcards.length) {
+            setState(() {
+              _flashcards[index]['pronunciation'] = pronunciation.trim();
+            });
+          }
+        }
+      }
+    } catch (e) {
+      // 에러는 무시 (발음기호가 없어도 학습은 계속 가능)
+      print('발음기호 가져오기 실패: $word - $e');
+    }
+  }
+
+  Widget _buildBackCard(String word, Map<String, dynamic> meaning, Map<String, dynamic> flashcardData) {
     final starCount = _starCounts[word] ?? 0;
+    final pronunciation = flashcardData['pronunciation'] as String?;
     
     return LayoutBuilder(
       builder: (context, constraints) {
@@ -1335,6 +1494,19 @@ class _FlashcardStudyScreenState extends State<FlashcardStudyScreen>
                         color: Color(0xFF6366F1),
                       ),
                     ),
+                    // 발음기호 표시 (단어 아래)
+                    if (pronunciation != null && pronunciation.trim().isNotEmpty) ...[
+                      const SizedBox(height: 12),
+                      Text(
+                        pronunciation.trim(),
+                        style: TextStyle(
+                          fontSize: 20,
+                          fontWeight: FontWeight.w500,
+                          color: Colors.grey.shade600,
+                          fontStyle: FontStyle.italic,
+                        ),
+                      ),
+                    ],
                     const SizedBox(height: 24),
                     // Definition
                     if (meaning['definition'] != null) ...[
@@ -1386,15 +1558,42 @@ class _FlashcardStudyScreenState extends State<FlashcardStudyScreen>
                   }),
                 ),
               ),
-            // 수정 버튼 (하단 우측)
+            // 수정 버튼 (우측 상단)
             Positioned(
-              bottom: 16,
-              right: 16,
+              top: 16,
+              right: starCount > 0 ? 64 : 16, // 별이 있으면 오른쪽으로 더 이동
               child: FloatingActionButton(
                 mini: true,
                 onPressed: () => _showEditDialog(word, meaning),
                 backgroundColor: const Color(0xFF6366F1),
                 child: const Icon(Icons.edit, color: Colors.white, size: 20),
+              ),
+            ),
+            // 스피커 아이콘 (우측 하단)
+            Positioned(
+              bottom: 16,
+              right: 16,
+              child: GestureDetector(
+                onTap: () => _speakWord(word),
+                child: Container(
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF6366F1).withOpacity(0.1),
+                    shape: BoxShape.circle,
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withOpacity(0.1),
+                        blurRadius: 4,
+                        offset: const Offset(0, 2),
+                      ),
+                    ],
+                  ),
+                  child: Icon(
+                    _isSpeaking ? Icons.volume_up : Icons.volume_up_outlined,
+                    color: const Color(0xFF6366F1),
+                    size: 24,
+                  ),
+                ),
               ),
             ),
           ],
@@ -1419,6 +1618,13 @@ class _FlashcardStudyScreenState extends State<FlashcardStudyScreen>
     final currentFlashcard = _flashcards[_currentIndex];
     final word = currentFlashcard['word'] as String;
     final meaning = currentFlashcard['meaning'] as Map<String, dynamic>? ?? {};
+    
+    // 발음기호가 플래시카드 데이터에 없으면 words 컬렉션에서 가져오기
+    if (currentFlashcard['pronunciation'] == null || 
+        (currentFlashcard['pronunciation'] as String?).toString().trim().isEmpty) {
+      // 백그라운드에서 발음기호 가져오기 (비동기)
+      _loadPronunciationIfNeeded(word, _currentIndex);
+    }
 
     return Scaffold(
       appBar: AppBar(
@@ -1470,7 +1676,7 @@ class _FlashcardStudyScreenState extends State<FlashcardStudyScreen>
                                     : Transform(
                                         alignment: Alignment.center,
                                         transform: Matrix4.identity()..rotateY(3.14159), // 180도 뒤집기
-                                        child: _buildBackCard(word, meaning),
+                                        child: _buildBackCard(word, meaning, currentFlashcard),
                                       ),
                               ),
                             );
@@ -1543,6 +1749,14 @@ class _FlashcardStudyScreenState extends State<FlashcardStudyScreen>
 
   @override
   void dispose() {
+    // TTS가 초기화되었을 때만 정리
+    if (_isTtsInitialized && _flutterTts != null) {
+      try {
+        _flutterTts!.stop();
+      } catch (e) {
+        print('TTS 정리 중 오류: $e');
+      }
+    }
     _flipController.dispose();
     _slideController.dispose();
     super.dispose();
